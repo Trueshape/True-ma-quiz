@@ -1,0 +1,1 @@
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS audio_volume float NOT NULL DEFAULT 1.0;

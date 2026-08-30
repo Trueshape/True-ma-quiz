@@ -1,0 +1,1 @@
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS audio_start_ms integer DEFAULT 0;
