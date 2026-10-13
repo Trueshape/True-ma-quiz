@@ -220,16 +220,17 @@ export function computeOpenPoints(
   }
   const normalizedUser = normalizeString(userAnswer);
   let bestSim = 0;
+  let isCorrect = false;
   for (const ans of acceptedAnswers) {
     const normalizedAns = normalizeString(ans);
     if (!normalizedAns) continue;
     const sim = similarity(normalizedUser, normalizedAns);
     if (sim > bestSim) bestSim = sim;
+    const threshold = normalizedAns.length < 6 ? 1 : 0.8;
+    if (sim >= threshold) isCorrect = true;
   }
-  // Threshold: >= 0.8 is correct, partial credit scaled below that.
-  const isCorrect = bestSim >= 0.8;
   const tf = timeFactor(timeTakenMs, timeLimitMs, 3000);
-  const points = Math.round(maxPoints * Math.min(1, bestSim) * tf);
+  const points = isCorrect ? Math.round(maxPoints * tf) : 0;
   return { points, isCorrect, similarity: bestSim };
 }
 
