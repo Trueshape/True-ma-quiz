@@ -159,7 +159,7 @@ export function parseQuizText(input: string): ParseResult {
 
       if (/^Time:\s*/i.test(l)) {
         const secs = parseInt(l.replace(/^Time:\s*/i, '').trim());
-        if (!isNaN(secs) && secs >= 0) time_limit_ms = secs * 1000;
+        if (!isNaN(secs) && secs > 0) time_limit_ms = secs * 1000;
         i++;
         continue;
       }

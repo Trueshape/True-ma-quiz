@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Zap, Search, Globe, Users, Home, Play, MonitorPlay, ArrowRight, BookOpen } from 'lucide-react';
-import { supabase, type Quiz, generateRoomCode, getGuestSession } from '@/lib/supabase';
+import { supabase, type Quiz, getGuestSession } from '@/lib/supabase';
+import { createSession } from '@/lib/game-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -65,28 +66,12 @@ export default function LibraryPage() {
       toast({ title: 'This quiz has no questions yet', variant: 'destructive' });
       return;
     }
-    let code = generateRoomCode();
-    let attempts = 0;
-    while (attempts < 5) {
-      const { data: existing } = await supabase
-        .from('sessions')
-        .select('id')
-        .eq('code', code)
-        .maybeSingle();
-      if (!existing) break;
-      code = generateRoomCode();
-      attempts++;
-    }
-    const { data, error } = await supabase
-      .from('sessions')
-      .insert({ quiz_id: quiz.id, code, status: 'lobby' })
-      .select()
-      .single();
-    if (error || !data) {
+    const { session, error } = await createSession(quiz.id);
+    if (error || !session) {
       toast({ title: 'Failed to start session', description: error?.message, variant: 'destructive' });
       return;
     }
-    router.push(`/host/${data.id}`);
+    router.push(`/host/${session.id}`);
   };
 
   const filtered = search.trim()

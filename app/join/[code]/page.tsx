@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Users, Zap, Home } from 'lucide-react';
 import { supabase, type Session } from '@/lib/supabase';
+import { joinSession } from '@/lib/game-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -44,22 +45,22 @@ export default function JoinPage() {
       return;
     }
     setJoining(true);
-    const { data, error } = await supabase
-      .from('players')
-      .insert({ session_id: session.id, nickname: nickname.trim() })
-      .select()
-      .single();
-    if (error) {
-      if (error.code === '23505') {
+    const { player, error } = await joinSession(session.id, nickname.trim());
+    if (error || !player) {
+      if (error?.code === '23505') {
         toast({ title: 'Nickname taken', description: 'Choose a different nickname.', variant: 'destructive' });
+      } else if (error?.message === 'game_started') {
+        toast({ title: 'Game already started', description: 'You can no longer join this game.', variant: 'destructive' });
+      } else if (error?.message === 'invalid_nickname') {
+        toast({ title: 'Invalid nickname', description: 'Use 1 to 30 characters.', variant: 'destructive' });
       } else {
-        toast({ title: 'Failed to join', description: error.message, variant: 'destructive' });
+        toast({ title: 'Failed to join', description: error?.message, variant: 'destructive' });
       }
       setJoining(false);
       return;
     }
     // Store player id locally so the play page can use it.
-    sessionStorage.setItem(`player:${session.id}`, data.id);
+    sessionStorage.setItem(`player:${session.id}`, player.id);
     router.push(`/play/${session.id}`);
   };
 

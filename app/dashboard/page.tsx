@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, Zap, Trophy, Users, MoreVertical, Play, ArrowRight, MonitorPlay, Home, Trash2, LogOut, User, UserX, Globe, Lock, Twitter, Facebook, Upload } from 'lucide-react';
-import { supabase, type Quiz, generateRoomCode, getGuestSession, clearGuestSession, addGuestQuizId, removeGuestQuizId } from '@/lib/supabase';
+import { supabase, type Quiz, getGuestSession, clearGuestSession, addGuestQuizId, removeGuestQuizId } from '@/lib/supabase';
+import { createSession } from '@/lib/game-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -227,8 +228,9 @@ export default function DashboardPage() {
 
     const { error: qErr } = await supabase.from('questions').insert(questionRows);
     if (qErr) {
-      toast({ title: 'Quiz created but questions failed', description: qErr.message, variant: 'destructive' });
-      router.push(`/dashboard/${quizRow.id}`);
+      await supabase.from('quizzes').delete().eq('id', quizRow.id);
+      if (guest) removeGuestQuizId(quizRow.id);
+      toast({ title: 'Import failed', description: qErr.message, variant: 'destructive' });
       throw qErr;
     }
     toast({ title: 'Quiz imported', description: `${parsed.questions.length} questions added to "${parsed.title}"` });
@@ -248,28 +250,12 @@ export default function DashboardPage() {
       toast({ title: 'Add at least one question first', variant: 'destructive' });
       return;
     }
-    let code = generateRoomCode();
-    let attempts = 0;
-    while (attempts < 5) {
-      const { data: existing } = await supabase
-        .from('sessions')
-        .select('id')
-        .eq('code', code)
-        .maybeSingle();
-      if (!existing) break;
-      code = generateRoomCode();
-      attempts++;
-    }
-    const { data, error } = await supabase
-      .from('sessions')
-      .insert({ quiz_id: quiz.id, code, status: 'lobby' })
-      .select()
-      .single();
-    if (error || !data) {
+    const { session, error } = await createSession(quiz.id);
+    if (error || !session) {
       toast({ title: 'Failed to start session', description: error?.message, variant: 'destructive' });
       return;
     }
-    router.push(`/host/${data.id}`);
+    router.push(`/host/${session.id}`);
   };
 
   const handleLogout = async () => {
@@ -544,7 +530,7 @@ export default function DashboardPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete "{deleteTarget?.title}"?</AlertDialogTitle>
+            <AlertDialogTitle>Delete &quot;{deleteTarget?.title}&quot;?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently delete the quiz and all its questions. This action cannot be undone.
             </AlertDialogDescription>

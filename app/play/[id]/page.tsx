@@ -4,7 +4,8 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Check, X, Trophy, Zap, Users, Loader2, Info, ArrowRight, Home, ArrowUp, ArrowDown, Type, GripVertical } from 'lucide-react';
-import { supabase, type Session, type Player, type Question, computePoints, computeSliderPoints, computeReorderPoints, computeOpenPoints } from '@/lib/supabase';
+import { supabase, type Session, type Player, type Question } from '@/lib/supabase';
+import { submitAnswer as submitAnswerRpc, type AnswerPayload } from '@/lib/game-api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -207,6 +208,25 @@ export default function PlayPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.status, session?.current_question_index, session?.question_started_at]);
 
+  const sendAnswer = async (payload: AnswerPayload) => {
+    if (!session || !player) return;
+    const { result, error } = await submitAnswerRpc(sessionId, player.id, payload);
+    if (error || !result) {
+      const expected = error?.code === '23505' || error?.message === 'too_late' || error?.message === 'not_accepting_answers';
+      if (!expected) {
+        toast({ title: 'Failed to submit answer', description: error?.message, variant: 'destructive' });
+      }
+      return;
+    }
+    setPlayer({ ...player, score: result.score });
+    setLastPoints(result.points);
+    setLastCorrect(result.is_correct);
+  };
+
+  const stopTimer = () => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+  };
+
   const submitAnswer = async (optionIndex: number) => {
     if (!session || !player || hasAnswered) return;
     const currentQ = questions[session.current_question_index];
@@ -215,34 +235,8 @@ export default function PlayPage() {
     answeredRef.current = true;
     setChosenIndex(optionIndex);
     setHasAnswered(true);
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-
-    const timeTaken = Date.now() - questionStartRef.current;
-    const isCorrect = optionIndex === currentQ.correct_index;
-    const points = computePoints(isCorrect, timeTaken, currentQ.time_limit_ms, currentQ.points_value);
-
-    const { error } = await supabase.from('answers').insert({
-      session_id: sessionId,
-      player_id: player.id,
-      question_id: currentQ.id,
-      question_index: session.current_question_index,
-      chosen_index: optionIndex,
-      is_correct: isCorrect,
-      time_taken_ms: Math.min(timeTaken, currentQ.time_limit_ms),
-      points,
-    });
-
-    if (error) {
-      if (error.code === '23505') return;
-      toast({ title: 'Failed to submit answer', description: error.message, variant: 'destructive' });
-      return;
-    }
-
-    const newScore = player.score + points;
-    setPlayer({ ...player, score: newScore });
-    setLastPoints(points);
-    setLastCorrect(isCorrect);
-    await supabase.from('players').update({ score: newScore }).eq('id', player.id);
+    stopTimer();
+    await sendAnswer({ chosenIndex: optionIndex });
   };
 
   const submitSliderAnswer = async (value: number) => {
@@ -253,38 +247,8 @@ export default function PlayPage() {
     answeredRef.current = true;
     setSliderValue(value);
     setHasAnswered(true);
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-
-    const timeTaken = Date.now() - questionStartRef.current;
-    const answer = currentQ.slider_answer ?? 0;
-    const min = currentQ.slider_min ?? 0;
-    const max = currentQ.slider_max ?? 100;
-    const points = computeSliderPoints(value, answer, min, max, currentQ.points_value, timeTaken, currentQ.time_limit_ms);
-    const isCorrect = value === answer;
-
-    const { error } = await supabase.from('answers').insert({
-      session_id: sessionId,
-      player_id: player.id,
-      question_id: currentQ.id,
-      question_index: session.current_question_index,
-      chosen_index: 0,
-      slider_value: value,
-      is_correct: isCorrect,
-      time_taken_ms: Math.min(timeTaken, currentQ.time_limit_ms),
-      points,
-    });
-
-    if (error) {
-      if (error.code === '23505') return;
-      toast({ title: 'Failed to submit answer', description: error.message, variant: 'destructive' });
-      return;
-    }
-
-    const newScore = player.score + points;
-    setPlayer({ ...player, score: newScore });
-    setLastPoints(points);
-    setLastCorrect(isCorrect);
-    await supabase.from('players').update({ score: newScore }).eq('id', player.id);
+    stopTimer();
+    await sendAnswer({ sliderValue: value });
   };
 
   const submitReorderAnswer = async (order: number[]) => {
@@ -295,36 +259,8 @@ export default function PlayPage() {
     answeredRef.current = true;
     setReorderOrder(order);
     setHasAnswered(true);
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-
-    const timeTaken = Date.now() - questionStartRef.current;
-    const correctOrder = currentQ.reorder_correct_order ?? [];
-    const points = computeReorderPoints(order, correctOrder, currentQ.points_value, timeTaken, currentQ.time_limit_ms);
-    const isCorrect = points >= currentQ.points_value;
-
-    const { error } = await supabase.from('answers').insert({
-      session_id: sessionId,
-      player_id: player.id,
-      question_id: currentQ.id,
-      question_index: session.current_question_index,
-      chosen_index: 0,
-      reorder_order: order,
-      is_correct: isCorrect,
-      time_taken_ms: Math.min(timeTaken, currentQ.time_limit_ms),
-      points,
-    });
-
-    if (error) {
-      if (error.code === '23505') return;
-      toast({ title: 'Failed to submit answer', description: error.message, variant: 'destructive' });
-      return;
-    }
-
-    const newScore = player.score + points;
-    setPlayer({ ...player, score: newScore });
-    setLastPoints(points);
-    setLastCorrect(isCorrect);
-    await supabase.from('players').update({ score: newScore }).eq('id', player.id);
+    stopTimer();
+    await sendAnswer({ reorderOrder: order });
   };
 
   const submitOpenAnswer = async (text: string) => {
@@ -335,35 +271,8 @@ export default function PlayPage() {
     answeredRef.current = true;
     setOpenText(text);
     setHasAnswered(true);
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-
-    const timeTaken = Date.now() - questionStartRef.current;
-    const accepted = currentQ.open_answers ?? [];
-    const { points, isCorrect } = computeOpenPoints(text, accepted, currentQ.points_value, timeTaken, currentQ.time_limit_ms);
-
-    const { error } = await supabase.from('answers').insert({
-      session_id: sessionId,
-      player_id: player.id,
-      question_id: currentQ.id,
-      question_index: session.current_question_index,
-      chosen_index: 0,
-      open_text: text,
-      is_correct: isCorrect,
-      time_taken_ms: Math.min(timeTaken, currentQ.time_limit_ms),
-      points,
-    });
-
-    if (error) {
-      if (error.code === '23505') return;
-      toast({ title: 'Failed to submit answer', description: error.message, variant: 'destructive' });
-      return;
-    }
-
-    const newScore = player.score + points;
-    setPlayer({ ...player, score: newScore });
-    setLastPoints(points);
-    setLastCorrect(isCorrect);
-    await supabase.from('players').update({ score: newScore }).eq('id', player.id);
+    stopTimer();
+    await sendAnswer({ openText: text });
   };
 
   if (loading || !session || !player) {

@@ -116,6 +116,7 @@ export type Player = {
   session_id: string;
   nickname: string;
   score: number;
+  last_answered_index: number | null;
   joined_at: string;
 };
 

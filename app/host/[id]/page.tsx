@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Users, Play, ArrowRight, Trophy, Check, X, RotateCcw, Share2, Info, Sliders, Home, Type } from 'lucide-react';
 import { supabase, type Session, type Player, type Question, type Quiz } from '@/lib/supabase';
+import { getHostToken, hostUpdate, type HostUpdate } from '@/lib/game-api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -25,7 +26,6 @@ export default function HostPage() {
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [answers, setAnswers] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState(0);
   const [showCorrect, setShowCorrect] = useState(false);
@@ -34,6 +34,11 @@ export default function HostPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const load = useCallback(async () => {
+    if (!getHostToken(sessionId)) {
+      toast({ title: 'Not your game', description: 'This game can only be controlled from the device that created it.', variant: 'destructive' });
+      router.push('/dashboard');
+      return;
+    }
     const { data: sess } = await supabase.from('sessions').select('*').eq('id', sessionId).maybeSingle();
     if (!sess) {
       toast({ title: 'Session not found', variant: 'destructive' });
@@ -97,8 +102,9 @@ export default function HostPage() {
   }, [session?.status, session?.current_question_index, questions]);
 
   // Real-time subscriptions
+  const sessionLoaded = session !== null;
   useEffect(() => {
-    if (!session) return;
+    if (!sessionLoaded) return;
     const playerChannel = supabase
       .channel(`host-players-${sessionId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `session_id=eq.${sessionId}` },
@@ -123,28 +129,14 @@ export default function HostPage() {
       )
       .subscribe();
 
-    const answerChannel = supabase
-      .channel(`host-answers-${sessionId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'answers', filter: `session_id=eq.${sessionId}` },
-        (payload) => {
-          const a = payload.new as { player_id: string; question_index: number };
-          if (session && a.question_index === session.current_question_index) {
-            setAnswers((prev) => ({ ...prev, [a.player_id]: (prev[a.player_id] || 0) + 1 }));
-          }
-        }
-      )
-      .subscribe();
-
     return () => {
       supabase.removeChannel(playerChannel);
       supabase.removeChannel(sessionChannel);
-      supabase.removeChannel(answerChannel);
     };
-  }, [sessionId, session?.current_question_index]);
+  }, [sessionId, sessionLoaded]);
 
-  // Reset answer counts when question index changes
+  // Hide the correct answer when the question index changes
   useEffect(() => {
-    setAnswers({});
     setShowCorrect(false);
   }, [session?.current_question_index]);
 
@@ -175,89 +167,63 @@ export default function HostPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.status, session?.current_question_index, session?.question_started_at]);
 
+  const update = async (u: HostUpdate): Promise<boolean> => {
+    const { error } = await hostUpdate(sessionId, u);
+    if (error) {
+      toast({
+        title: 'Action failed',
+        description: error.message === 'invalid_host' ? 'This game can only be controlled from the device that created it.' : error.message,
+        variant: 'destructive',
+      });
+      return false;
+    }
+    return true;
+  };
+
+  const nextPlayableIndex = (from: number) => {
+    let idx = from;
+    while (idx < questions.length && questions[idx].type === 'info') idx++;
+    return idx;
+  };
+
   const startGame = async () => {
     if (players.length === 0) {
       toast({ title: 'No players yet', description: 'Wait for at least one player to join.', variant: 'destructive' });
       return;
     }
     // Skip leading info pages
-    let startIdx = 0;
-    while (startIdx < questions.length && questions[startIdx].type === 'info') startIdx++;
+    const startIdx = nextPlayableIndex(0);
     if (startIdx >= questions.length) {
       toast({ title: 'No playable questions', variant: 'destructive' });
       return;
     }
-    await supabase.from('sessions').update({
-      status: 'question',
-      current_question_index: startIdx,
-      question_started_at: new Date().toISOString(),
-      started_at: new Date().toISOString(),
-    }).eq('id', sessionId);
+    await update({ status: 'question', questionIndex: startIdx, startTimer: true, setStarted: true });
   };
 
   const toLeaderboard = async () => {
     if (!session) return;
-    await supabase.from('sessions').update({
-      status: 'leaderboard',
-      question_started_at: null,
-    }).eq('id', sessionId);
-    setShowCorrect(true);
+    if (await update({ status: 'leaderboard' })) setShowCorrect(true);
   };
 
+  // Skip info pages — they're handled by the info view with a Continue button
   const nextQuestion = async () => {
     if (!session) return;
-    let nextIdx = session.current_question_index + 1;
-    // Skip info pages — they're handled by the info view with a Continue button
-    while (nextIdx < questions.length && questions[nextIdx].type === 'info') nextIdx++;
+    const nextIdx = nextPlayableIndex(session.current_question_index + 1);
     if (nextIdx >= questions.length) {
-      await supabase.from('sessions').update({
-        status: 'finished',
-        finished_at: new Date().toISOString(),
-      }).eq('id', sessionId);
+      await update({ status: 'finished', setFinished: true });
       return;
     }
-    await supabase.from('sessions').update({
-      status: 'question',
-      current_question_index: nextIdx,
-      question_started_at: new Date().toISOString(),
-    }).eq('id', sessionId);
+    await update({ status: 'question', questionIndex: nextIdx, startTimer: true });
   };
 
-  const showInfoPage = async () => {
-    if (!session) return;
-    let nextIdx = session.current_question_index + 1;
-    while (nextIdx < questions.length && questions[nextIdx].type === 'info') nextIdx++;
-    if (nextIdx >= questions.length) {
-      await supabase.from('sessions').update({
-        status: 'finished',
-        finished_at: new Date().toISOString(),
-      }).eq('id', sessionId);
-      return;
-    }
-    await supabase.from('sessions').update({
-      status: 'question',
-      current_question_index: nextIdx,
-      question_started_at: new Date().toISOString(),
-    }).eq('id', sessionId);
-  };
+  const showInfoPage = nextQuestion;
 
   const endGame = async () => {
-    await supabase.from('sessions').update({
-      status: 'finished',
-      finished_at: new Date().toISOString(),
-    }).eq('id', sessionId);
+    await update({ status: 'finished', setFinished: true });
   };
 
   const restart = async () => {
-    await supabase.from('answers').delete().eq('session_id', sessionId);
-    await supabase.from('players').update({ score: 0 }).eq('session_id', sessionId);
-    await supabase.from('sessions').update({
-      status: 'lobby',
-      current_question_index: 0,
-      question_started_at: null,
-      started_at: null,
-      finished_at: null,
-    }).eq('id', sessionId);
+    await update({ status: 'lobby', reset: true });
   };
 
   if (loading || !session) {
@@ -265,7 +231,9 @@ export default function HostPage() {
   }
 
   const currentQ = questions[session.current_question_index];
-  const answeredCount = Object.keys(answers).length;
+  const answeredCount = session.status === 'question'
+    ? players.filter((p) => p.last_answered_index === session.current_question_index).length
+    : 0;
   const scorableTotal = questions.filter(q => q.type !== 'info').length;
   const scorableNumber = questions.slice(0, session.current_question_index + 1).filter(q => q.type !== 'info').length;
 

@@ -788,7 +788,7 @@ function PracticeRevealView({
         {wasCorrect ? (
           <p className="font-bold text-emerald-300">Correct! +{lastPoints.toLocaleString()} points</p>
         ) : timedOut ? (
-          <p className="font-bold text-rose-300">Time's up — no points</p>
+          <p className="font-bold text-rose-300">Time&apos;s up — no points</p>
         ) : (
           <p className="font-bold text-rose-300">{lastPoints > 0 ? `+${lastPoints.toLocaleString()} points` : 'Incorrect — 0 points'}</p>
         )}
@@ -877,7 +877,7 @@ function PracticeFinishedView({
         <Trophy className="w-8 h-8 text-white" />
       </div>
       <h1 className="text-2xl font-bold mb-1">Practice complete!</h1>
-      <p className="text-muted-foreground mb-6">Here's how you did</p>
+      <p className="text-muted-foreground mb-6">Here&apos;s how you did</p>
 
       <div className="grid grid-cols-3 gap-3 max-w-md mx-auto mb-8">
         <Card>
