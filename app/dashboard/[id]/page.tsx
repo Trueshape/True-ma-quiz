@@ -8,6 +8,7 @@ import { VolumeControl } from '@/components/volume-control';
 import { ThemeSwitcher } from '@/components/theme-switcher';
 import { YouTubeEmbed, parseYouTubeId } from '@/components/youtube-embed';
 import { supabase, type Quiz, type Question, type QuestionType, getGuestSession } from '@/lib/supabase';
+import { saveQuiz } from '@/lib/game-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -78,7 +79,6 @@ export default function QuizEditorPage() {
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [createdBy, setCreatedBy] = useState('');
   const [coverImage, setCoverImage] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
   const [isGuest, setIsGuest] = useState(false);
@@ -87,7 +87,6 @@ export default function QuizEditorPage() {
     const guest = getGuestSession();
     if (guest) {
       setIsGuest(true);
-      setCreatedBy(guest.nickname);
       setAuthLoading(false);
       return;
     }
@@ -95,8 +94,6 @@ export default function QuizEditorPage() {
       if (!data.session) {
         router.push('/');
       } else {
-        const meta = data.session.user.user_metadata;
-        setCreatedBy(meta?.nickname ?? '');
       }
       setAuthLoading(false);
     });
@@ -116,7 +113,6 @@ export default function QuizEditorPage() {
     setQuiz(q as Quiz);
     setTitle(q.title);
     setDescription(q.description || '');
-    setCreatedBy(q.created_by || '');
     setCoverImage(q.cover_image_url || '');
     setQuestions(
       ((qs || []) as Question[]).map((x) => ({
@@ -257,25 +253,8 @@ export default function QuizEditorPage() {
       }
     }
 
-    const { error: metaErr } = await supabase
-      .from('quizzes')
-      .update({ title: title.trim(), description: description.trim() || null, cover_image_url: coverImage.trim() || null, created_by: createdBy.trim() || null })
-      .eq('id', quizId);
-    if (metaErr) {
-      toast({ title: 'Failed to save quiz', description: metaErr.message, variant: 'destructive' });
-      setSaving(false);
-      return false;
-    }
-
-    const { error: delErr } = await supabase.from('questions').delete().eq('quiz_id', quizId);
-    if (delErr) {
-      toast({ title: 'Failed to clear old questions', description: delErr.message, variant: 'destructive' });
-      setSaving(false);
-      return false;
-    }
-    const rows = questions.map((q, i) => ({
-      quiz_id: quizId,
-      position: i,
+    const rows = questions.map((q) => ({
+      id: q.id,
       type: q.type,
       prompt: q.prompt.trim(),
       options: q.type === 'tf' ? TF_OPTIONS : (q.type === 'mc' || q.type === 'reorder') ? q.options.map((o) => o.trim()) : [],
@@ -299,18 +278,15 @@ export default function QuizEditorPage() {
       points_value: q.points_value,
       info_image_position: q.info_image_position,
     }));
-    if (rows.length > 0) {
-      const { data: inserted, error: insErr } = await supabase.from('questions').insert(rows).select('id');
-      if (insErr) {
-        toast({ title: 'Failed to save questions', description: insErr.message, variant: 'destructive' });
-        setSaving(false);
-        return false;
-      }
-      if (!inserted || inserted.length !== rows.length) {
-        toast({ title: 'Not all questions saved', description: `Expected ${rows.length}, got ${inserted?.length ?? 0}`, variant: 'destructive' });
-        setSaving(false);
-        return false;
-      }
+    const { error: saveErr } = await saveQuiz(
+      quizId,
+      { title: title.trim(), description: description.trim(), cover_image_url: coverImage.trim() },
+      rows
+    );
+    if (saveErr) {
+      toast({ title: 'Failed to save quiz', description: saveErr.message, variant: 'destructive' });
+      setSaving(false);
+      return false;
     }
     toast({ title: 'Quiz saved', description: `${questions.length} question${questions.length !== 1 ? 's' : ''}` });
     setSaving(false);

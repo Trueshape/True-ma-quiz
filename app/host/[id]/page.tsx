@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Users, Play, ArrowRight, Trophy, Check, X, RotateCcw, Share2, Info, Sliders, Home, Type } from 'lucide-react';
 import { supabase, type Session, type Player, type Question, type Quiz } from '@/lib/supabase';
-import { getHostToken, hostUpdate, type HostUpdate } from '@/lib/game-api';
+import { getHostCode, getHostToken, hostUpdate, type HostUpdate } from '@/lib/game-api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -27,6 +27,7 @@ export default function HostPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
+  const [code, setCode] = useState('');
   const [timeLeft, setTimeLeft] = useState(0);
   const [showCorrect, setShowCorrect] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -52,6 +53,7 @@ export default function HostPage() {
       supabase.from('questions').select('*').eq('quiz_id', s.quiz_id).order('position', { ascending: true }),
       supabase.from('players').select('*').eq('session_id', sessionId).order('score', { ascending: false }),
     ]);
+    setCode((await getHostCode(sessionId)) ?? '');
     setQuiz(q as Quiz | null);
     setQuestions((qs || []) as Question[]);
     setPlayers((pls || []) as Player[]);
@@ -261,16 +263,16 @@ export default function HostPage() {
               <Button variant="ghost" size="icon" title="Home"><Home className="w-4 h-4" /></Button>
             </Link>
             <div className="px-3 py-1.5 rounded-lg bg-card border border-border font-mono font-bold text-sm tracking-wider">
-              {session.code}
+              {code}
             </div>
-            <Button variant="outline" size="icon" onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/join/${session.code}`); toast({ title: 'Join link copied' }); }}>
+            <Button variant="outline" size="icon" onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/join/${code}`); toast({ title: 'Join link copied' }); }}>
               <Share2 className="w-4 h-4" />
             </Button>
           </div>
         </div>
 
         {session.status === 'lobby' && (
-          <LobbyView session={session} players={players} onStart={startGame} />
+          <LobbyView code={code} players={players} onStart={startGame} />
         )}
 
         {session.status === 'question' && currentQ && currentQ.type === 'info' && (
@@ -350,15 +352,15 @@ export default function HostPage() {
   );
 }
 
-function LobbyView({ session, players, onStart }: { session: Session; players: Player[]; onStart: () => void }) {
+function LobbyView({ code, players, onStart }: { code: string; players: Player[]; onStart: () => void }) {
   return (
     <div className="grid lg:grid-cols-2 gap-6">
       <Card className="bg-card/60 backdrop-blur">
         <CardContent className="p-8 text-center">
           <p className="text-sm text-muted-foreground mb-2">Room code</p>
-          <div className="text-6xl font-extrabold tracking-[0.3em] font-mono mb-6 text-gradient">{session.code}</div>
+          <div className="text-6xl font-extrabold tracking-[0.3em] font-mono mb-6 text-gradient">{code}</div>
           <p className="text-sm text-muted-foreground mb-1">Players scan or visit</p>
-          <p className="text-sm font-mono text-primary mb-6">/join/{session.code}</p>
+          <p className="text-sm font-mono text-primary mb-6">/join/{code}</p>
           <div className="flex items-center justify-center gap-2 text-muted-foreground">
             <Users className="w-4 h-4" />
             <span className="text-2xl font-bold text-foreground">{players.length}</span>

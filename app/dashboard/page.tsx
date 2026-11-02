@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, Zap, Trophy, Users, MoreVertical, Play, ArrowRight, MonitorPlay, Home, Trash2, LogOut, User, UserX, Globe, Lock, Twitter, Facebook, Upload } from 'lucide-react';
-import { supabase, type Quiz, getGuestSession, clearGuestSession, addGuestQuizId, removeGuestQuizId } from '@/lib/supabase';
-import { createSession } from '@/lib/game-api';
+import { supabase, type Quiz, getGuestSession, clearGuestSession, removeGuestQuizId } from '@/lib/supabase';
+import { createQuiz as createQuizRpc, createSession, deleteQuiz, saveQuiz, setQuizPublic } from '@/lib/game-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -148,60 +148,26 @@ export default function DashboardPage() {
   const createQuiz = async () => {
     if (!newTitle.trim()) return;
     setCreating(true);
-
-    const guest = getGuestSession();
-    const insertData: Record<string, unknown> = {
-      title: newTitle.trim(),
-      description: newDesc.trim() || null,
-      created_by: guest ? guest.nickname : (currentUser?.nickname ?? null),
-    };
-    if (guest) {
-      insertData.is_guest = true;
-      // owner_id intentionally omitted (null) for guest quizzes
-    }
-
-    const { data, error } = await supabase
-      .from('quizzes')
-      .insert(insertData)
-      .select()
-      .single();
+    const { quiz, error } = await createQuizRpc(newTitle.trim(), newDesc.trim() || null);
     setCreating(false);
-    if (error || !data) {
+    if (error || !quiz) {
       toast({ title: 'Failed to create quiz', description: error?.message, variant: 'destructive' });
       return;
-    }
-    if (guest) {
-      addGuestQuizId(data.id);
     }
     setCreateOpen(false);
     setNewTitle('');
     setNewDesc('');
-    router.push(`/dashboard/${data.id}`);
+    router.push(`/dashboard/${quiz.id}`);
   };
 
   const handleImportQuiz = async (parsed: ParsedQuiz) => {
-    const guest = getGuestSession();
-    const insertData: Record<string, unknown> = {
-      title: parsed.title,
-      description: parsed.description || null,
-      created_by: guest ? guest.nickname : (currentUser?.nickname ?? null),
-    };
-    if (guest) insertData.is_guest = true;
-
-    const { data: quizRow, error: quizErr } = await supabase
-      .from('quizzes')
-      .insert(insertData)
-      .select()
-      .single();
-    if (quizErr || !quizRow) {
-      toast({ title: 'Failed to create quiz', description: quizErr?.message, variant: 'destructive' });
-      throw quizErr;
+    const { quiz, error } = await createQuizRpc(parsed.title, parsed.description || null);
+    if (error || !quiz) {
+      toast({ title: 'Failed to create quiz', description: error?.message, variant: 'destructive' });
+      throw error;
     }
-    if (guest) addGuestQuizId(quizRow.id);
 
-    const questionRows = parsed.questions.map((q, i) => ({
-      quiz_id: quizRow.id,
-      position: i,
+    const questionRows = parsed.questions.map((q) => ({
       type: q.type,
       prompt: q.prompt,
       options: q.type === 'tf' ? ['True', 'False'] : q.type === 'mc' ? q.options : q.type === 'reorder' ? q.options : [],
@@ -226,12 +192,16 @@ export default function DashboardPage() {
       info_image_position: 'top',
     }));
 
-    const { error: qErr } = await supabase.from('questions').insert(questionRows);
-    if (qErr) {
-      await supabase.from('quizzes').delete().eq('id', quizRow.id);
-      if (guest) removeGuestQuizId(quizRow.id);
-      toast({ title: 'Import failed', description: qErr.message, variant: 'destructive' });
-      throw qErr;
+    const { error: saveErr } = await saveQuiz(
+      quiz.id,
+      { title: parsed.title, description: parsed.description || '', cover_image_url: '' },
+      questionRows
+    );
+    if (saveErr) {
+      await deleteQuiz(quiz.id);
+      if (getGuestSession()) removeGuestQuizId(quiz.id);
+      toast({ title: 'Import failed', description: saveErr.message, variant: 'destructive' });
+      throw saveErr;
     }
     toast({ title: 'Quiz imported', description: `${parsed.questions.length} questions added to "${parsed.title}"` });
     load();
@@ -262,10 +232,7 @@ export default function DashboardPage() {
     const guest = getGuestSession();
     if (guest) {
       // Delete guest quizzes from Supabase before clearing session
-      if (guest.quizIds.length > 0) {
-        await supabase.from('questions').delete().in('quiz_id', guest.quizIds);
-        await supabase.from('quizzes').delete().in('id', guest.quizIds).eq('is_guest', true);
-      }
+      await Promise.all(guest.quizIds.map((id) => deleteQuiz(id, guest.quizTokens?.[id] ?? null)));
       clearGuestSession();
     } else {
       await supabase.auth.signOut();
@@ -276,13 +243,7 @@ export default function DashboardPage() {
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
-    const { error: qErr } = await supabase.from('questions').delete().eq('quiz_id', deleteTarget.id);
-    if (qErr) {
-      toast({ title: 'Failed to delete questions', description: qErr.message, variant: 'destructive' });
-      setDeleting(false);
-      return;
-    }
-    const { error } = await supabase.from('quizzes').delete().eq('id', deleteTarget.id);
+    const { error } = await deleteQuiz(deleteTarget.id);
     setDeleting(false);
     if (error) {
       toast({ title: 'Failed to delete quiz', description: error.message, variant: 'destructive' });
@@ -298,10 +259,7 @@ export default function DashboardPage() {
     if (isGuest) return;
     setTogglingPublic(quiz.id);
     const newValue = !quiz.is_public;
-    const { error } = await supabase
-      .from('quizzes')
-      .update({ is_public: newValue })
-      .eq('id', quiz.id);
+    const { error } = await setQuizPublic(quiz.id, newValue);
     setTogglingPublic(null);
     if (error) {
       toast({ title: 'Failed to update visibility', description: error.message, variant: 'destructive' });

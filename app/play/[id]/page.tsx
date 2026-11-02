@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Check, X, Trophy, Zap, Users, Loader2, Info, ArrowRight, Home, ArrowUp, ArrowDown, Type, GripVertical } from 'lucide-react';
 import { supabase, type Session, type Player, type Question } from '@/lib/supabase';
-import { submitAnswer as submitAnswerRpc, type AnswerPayload } from '@/lib/game-api';
+import { getPlayerLobbyCode, submitAnswer as submitAnswerRpc, type AnswerPayload } from '@/lib/game-api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -311,7 +311,7 @@ export default function PlayPage() {
         </div>
 
         {session.status === 'lobby' && (
-          <LobbyWaitingView code={session.code} nickname={player.nickname} players={players} />
+          <LobbyWaitingView code={getPlayerLobbyCode(sessionId) ?? ''} nickname={player.nickname} players={players} />
         )}
 
         {session.status === 'question' && currentQ && currentQ.type === 'info' && (

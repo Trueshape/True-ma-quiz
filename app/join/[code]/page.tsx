@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Users, Zap, Home } from 'lucide-react';
-import { supabase, type Session } from '@/lib/supabase';
-import { joinSession } from '@/lib/game-api';
+import type { Session } from '@/lib/supabase';
+import { getSessionByCode, joinSession } from '@/lib/game-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -17,7 +17,7 @@ export default function JoinPage() {
   const router = useRouter();
   const { toast } = useToast();
   const code = (params.code as string).toUpperCase();
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<{ id: string; status: Session['status'] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [nickname, setNickname] = useState('');
   const [joining, setJoining] = useState(false);
@@ -25,13 +25,9 @@ export default function JoinPage() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const { data } = await supabase
-        .from('sessions')
-        .select('*')
-        .eq('code', code)
-        .maybeSingle();
+      const found = await getSessionByCode(code);
       if (!mounted) return;
-      setSession(data as Session | null);
+      setSession(found);
       setLoading(false);
     })();
     return () => { mounted = false; };
@@ -45,12 +41,14 @@ export default function JoinPage() {
       return;
     }
     setJoining(true);
-    const { player, error } = await joinSession(session.id, nickname.trim());
-    if (error || !player) {
+    const { player, sessionId, error } = await joinSession(code, nickname.trim());
+    if (error || !player || !sessionId) {
       if (error?.code === '23505') {
         toast({ title: 'Nickname taken', description: 'Choose a different nickname.', variant: 'destructive' });
       } else if (error?.message === 'game_started') {
         toast({ title: 'Game already started', description: 'You can no longer join this game.', variant: 'destructive' });
+      } else if (error?.message === 'lobby_full') {
+        toast({ title: 'Game is full', description: 'This game has reached its player limit.', variant: 'destructive' });
       } else if (error?.message === 'invalid_nickname') {
         toast({ title: 'Invalid nickname', description: 'Use 1 to 30 characters.', variant: 'destructive' });
       } else {
@@ -60,8 +58,8 @@ export default function JoinPage() {
       return;
     }
     // Store player id locally so the play page can use it.
-    sessionStorage.setItem(`player:${session.id}`, player.id);
-    router.push(`/play/${session.id}`);
+    sessionStorage.setItem(`player:${sessionId}`, player.id);
+    router.push(`/play/${sessionId}`);
   };
 
   return (

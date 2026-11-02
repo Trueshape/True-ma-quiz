@@ -28,6 +28,7 @@ export type Quiz = {
 export type GuestSession = {
   nickname: string;
   quizIds: string[]; // IDs of guest quizzes inserted in Supabase for this session
+  quizTokens: Record<string, string>; // secret edit token of each guest quiz
 };
 
 const GUEST_KEY = 'truemaquiz_guest';
@@ -50,19 +51,24 @@ export function clearGuestSession(): void {
   sessionStorage.removeItem(GUEST_KEY);
 }
 
-export function addGuestQuizId(quizId: string): void {
+export function addGuestQuizId(quizId: string, token: string): void {
   const session = getGuestSession();
   if (!session) return;
-  if (!session.quizIds.includes(quizId)) {
-    session.quizIds.push(quizId);
-    setGuestSession(session);
-  }
+  if (!session.quizIds.includes(quizId)) session.quizIds.push(quizId);
+  session.quizTokens = { ...session.quizTokens, [quizId]: token };
+  setGuestSession(session);
+}
+
+export function getGuestQuizToken(quizId: string): string | null {
+  return getGuestSession()?.quizTokens?.[quizId] ?? null;
 }
 
 export function removeGuestQuizId(quizId: string): void {
   const session = getGuestSession();
   if (!session) return;
   session.quizIds = session.quizIds.filter((id) => id !== quizId);
+  const { [quizId]: _removed, ...tokens } = session.quizTokens ?? {};
+  session.quizTokens = tokens;
   setGuestSession(session);
 }
 

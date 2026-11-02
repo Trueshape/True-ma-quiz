@@ -84,8 +84,12 @@ export default function Home() {
       toast({ title: 'Nickname must be 4–20 characters', variant: 'destructive' });
       return;
     }
-    if (password.length < 4 || password.length > 20) {
-      toast({ title: 'Password must be 4–20 characters', variant: 'destructive' });
+    if (authMode === 'register' && password.length < 8) {
+      toast({ title: 'Password must be at least 8 characters', description: 'There is no password reset, so keep it somewhere safe.', variant: 'destructive' });
+      return;
+    }
+    if (password.length > 72) {
+      toast({ title: 'Password must be at most 72 characters', variant: 'destructive' });
       return;
     }
     setAuthBusy(true);
@@ -131,7 +135,7 @@ export default function Home() {
 
   const handleGuestLogin = () => {
     const guestNick = randomGuestNickname();
-    setGuestSession({ nickname: guestNick, quizIds: [] });
+    setGuestSession({ nickname: guestNick, quizIds: [], quizTokens: {} });
     setGuestUser({ nickname: guestNick });
     toast({ title: `Browsing as guest: ${guestNick}`, description: 'Your quizzes will be lost when you close this tab.' });
     router.push('/dashboard');
@@ -283,8 +287,8 @@ export default function Home() {
                         <Input
                           value={nickname}
                           onChange={(e) => setNickname(e.target.value)}
-                          placeholder="4–20 characters"
-                          maxLength={20}
+                          placeholder={authMode === 'register' ? 'At least 8 characters' : 'Your password'}
+                          maxLength={72}
                           autoComplete="username"
                         />
                       </div>
