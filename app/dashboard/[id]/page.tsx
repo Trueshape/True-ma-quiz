@@ -305,8 +305,8 @@ export default function QuizEditorPage() {
       <div className="fixed top-0 right-0 w-96 h-96 bg-primary/15 rounded-full blur-3xl pointer-events-none" />
 
       {/* Sticky header */}
-      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border">
-        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
+      <div className="sticky top-0 z-30 pointer-events-none">
+        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between [&>*]:pointer-events-auto">
           <div className="flex items-center gap-3">
             <HeaderBack href="/dashboard" label="Back to my quizzes" />
             <div>
@@ -316,14 +316,14 @@ export default function QuizEditorPage() {
           </div>
           <div className="flex items-center gap-2">
             {quizId && (
-              <Button asChild variant="outline" className="gap-2">
+              <Button asChild variant="ghost" size="icon" title="Practice" aria-label="Practice">
                 <Link href={`/practice/${quizId}`} target="_blank">
-                  <Play className="w-4 h-4" /> Practice
+                  <Play className="w-4 h-4" />
                 </Link>
               </Button>
             )}
-            <Button onClick={saveAll} disabled={saving} className="gap-2">
-              {saving ? 'Saving...' : <><Save className="w-4 h-4" /> Save</>}
+            <Button variant="ghost" size="icon" onClick={saveAll} disabled={saving} title="Save" aria-label="Save">
+              <Save className={saving ? 'w-4 h-4 animate-pulse' : 'w-4 h-4'} />
             </Button>
             <HeaderEnd />
           </div>
@@ -333,7 +333,7 @@ export default function QuizEditorPage() {
       <div className="relative z-10 max-w-5xl mx-auto px-6 py-8">
         <div className="flex gap-6 items-start">
           {/* Sticky left sidebar — question type buttons */}
-          <div className="hidden md:flex flex-col gap-2 w-48 shrink-0 sticky top-20">
+          <div className="hidden md:flex flex-col gap-2 w-48 shrink-0">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 px-1">Add question</p>
             {([
               { type: 'info' as QuestionType, icon: <Info className="w-4 h-4" />, label: 'Info page' },

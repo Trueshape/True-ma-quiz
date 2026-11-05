@@ -12,8 +12,8 @@ import { ThemeSwitcher } from '@/components/theme-switcher';
 /*
   Header layout used on every page:
   - left:  an optional back button, then the logo or page title
-  - right: page actions, then HeaderEnd. From right to left HeaderEnd shows:
-           log out, home, volume, theme, account name.
+  - right: page actions, then HeaderEnd. From left to right HeaderEnd shows:
+           theme, volume, home, log out, account name (last).
            All of them are 40px high icon buttons without a border.
 */
 
@@ -73,23 +73,6 @@ export function HeaderEnd({ account: withAccount = true, home = true, homeLabel 
 
   return (
     <div className="flex items-center gap-1">
-      {account && (
-        <Link
-          href="/dashboard"
-          title="My quizzes"
-          className="flex items-center gap-2 h-10 pl-2 pr-3 mr-2 rounded-lg transition-colors hover:bg-accent"
-        >
-          <span
-            className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-semibold ${
-              account.guest ? 'bg-amber-500 text-amber-950' : 'bg-primary text-primary-foreground'
-            }`}
-          >
-            {(account.nickname || '?').charAt(0).toUpperCase()}
-          </span>
-          <span className="text-sm font-medium">{account.nickname}</span>
-          {account.guest && <span className="text-xs text-amber-500 hidden sm:inline">Guest</span>}
-        </Link>
-      )}
       <ThemeSwitcher />
       <VolumeControl />
       {home && (
@@ -103,6 +86,23 @@ export function HeaderEnd({ account: withAccount = true, home = true, homeLabel 
         <Button variant="ghost" size="icon" onClick={logout} title="Log out" aria-label="Log out">
           <LogOut className="w-4 h-4" />
         </Button>
+      )}
+      {account && (
+        <Link
+          href="/dashboard"
+          title="My quizzes"
+          className="flex items-center gap-2 h-10 pl-2 pr-3 ml-2 rounded-lg transition-colors hover:bg-accent"
+        >
+          <span
+            className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-semibold ${
+              account.guest ? 'bg-amber-500 text-amber-950' : 'bg-primary text-primary-foreground'
+            }`}
+          >
+            {(account.nickname || '?').charAt(0).toUpperCase()}
+          </span>
+          <span className="text-sm font-medium">{account.nickname}</span>
+          {account.guest && <span className="text-xs text-amber-500 hidden sm:inline">Guest</span>}
+        </Link>
       )}
     </div>
   );
