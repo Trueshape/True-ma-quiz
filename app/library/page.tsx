@@ -3,14 +3,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Zap, Search, Globe, Users, Home, Play, MonitorPlay, ArrowRight, BookOpen } from 'lucide-react';
+import { Zap, Search, Globe, Users, Play, MonitorPlay, ArrowRight, BookOpen } from 'lucide-react';
 import { supabase, type Quiz, getGuestSession } from '@/lib/supabase';
 import { createSession } from '@/lib/game-api';
+import { AccountMenu, HeaderBack, HeaderUtilities } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { VolumeControl } from '@/components/volume-control';
-import { ThemeSwitcher } from '@/components/theme-switcher';
 import { useToast } from '@/hooks/use-toast';
 
 type QuizWithCount = Quiz & { question_count: number };
@@ -92,9 +91,7 @@ export default function LibraryPage() {
       <div className="relative z-10 max-w-6xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <Link href="/">
-              <Button variant="ghost" size="icon" title="Home"><Home className="w-4 h-4" /></Button>
-            </Link>
+            <HeaderBack href="/" label="Home" />
             <div>
               <h1 className="text-2xl font-bold flex items-center gap-2">
                 <Globe className="w-6 h-6 text-primary" /> Public Library
@@ -103,13 +100,13 @@ export default function LibraryPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <VolumeControl />
-            <ThemeSwitcher />
-            <Link href="/dashboard">
-              <Button variant="ghost" className="gap-2">
+            <Button asChild variant="ghost" className="gap-2">
+              <Link href="/dashboard">
                 My Quizzes <ArrowRight className="w-4 h-4" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
+            <HeaderUtilities />
+            <AccountMenu />
           </div>
         </div>
 

@@ -3,14 +3,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, Zap, Trophy, Users, MoreVertical, Play, ArrowRight, MonitorPlay, Home, Trash2, LogOut, User, UserX, Globe, Lock, Twitter, Facebook, Upload } from 'lucide-react';
-import { supabase, type Quiz, getGuestSession, clearGuestSession, removeGuestQuizId } from '@/lib/supabase';
+import { Plus, Zap, Trophy, Users, MoreVertical, Play, ArrowRight, MonitorPlay, Trash2, UserX, Globe, Lock, Twitter, Facebook, Upload } from 'lucide-react';
+import { supabase, type Quiz, getGuestSession, removeGuestQuizId } from '@/lib/supabase';
 import { createQuiz as createQuizRpc, createSession, deleteQuiz, saveQuiz, setQuizPublic } from '@/lib/game-api';
+import { AccountMenu, HeaderBack, HeaderUtilities } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { VolumeControl } from '@/components/volume-control';
-import { ThemeSwitcher } from '@/components/theme-switcher';
 import { ImportQuizDialog } from '@/components/import-quiz-dialog';
 import { type ParsedQuiz } from '@/lib/quiz-import';
 import { Switch } from '@/components/ui/switch';
@@ -228,18 +227,6 @@ export default function DashboardPage() {
     router.push(`/host/${session.id}`);
   };
 
-  const handleLogout = async () => {
-    const guest = getGuestSession();
-    if (guest) {
-      // Delete guest quizzes from Supabase before clearing session
-      await Promise.all(guest.quizIds.map((id) => deleteQuiz(id, guest.quizTokens?.[id] ?? null)));
-      clearGuestSession();
-    } else {
-      await supabase.auth.signOut();
-    }
-    router.push('/');
-  };
-
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -273,7 +260,6 @@ export default function DashboardPage() {
     return <div className="min-h-screen flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" /></div>;
   }
 
-  const displayName = guestNickname ?? currentUser?.nickname;
 
   return (
     <div className="min-h-screen bg-grid relative">
@@ -281,9 +267,7 @@ export default function DashboardPage() {
       <div className="relative z-10 max-w-6xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <Link href="/">
-              <Button variant="ghost" size="icon" title="Home"><Home className="w-4 h-4" /></Button>
-            </Link>
+            <HeaderBack href="/" label="Home" />
             <div>
               <h1 className="text-2xl font-bold">My Quizzes</h1>
               <p className="text-sm text-muted-foreground">
@@ -292,31 +276,21 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {displayName && (
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${isGuest ? 'bg-amber-500/10 border-amber-500/30' : 'bg-primary/10 border-primary/20'}`}>
-                {isGuest ? <UserX className="w-4 h-4 text-amber-500" /> : <User className="w-4 h-4 text-primary" />}
-                <span className="text-sm font-medium">{displayName}</span>
-                {isGuest && <span className="text-xs text-amber-500/80 hidden sm:inline">Guest</span>}
-              </div>
-            )}
             {!isGuest && (
-              <Link href="/library">
-                <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
+              <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
+                <Link href="/library">
                   <Globe className="w-4 h-4" /> Browse quizzes
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             )}
-            <Button variant="ghost" size="icon" onClick={handleLogout} title="Log out">
-              <LogOut className="w-4 h-4" />
-            </Button>
-            <VolumeControl />
-            <ThemeSwitcher />
             <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2">
               <Upload className="w-4 h-4" /> Import
             </Button>
             <Button onClick={() => setCreateOpen(true)} className="gap-2">
               <Plus className="w-4 h-4" /> New quiz
             </Button>
+            <HeaderUtilities />
+            <AccountMenu />
           </div>
         </div>
 

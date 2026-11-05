@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Zap, Trophy, Pencil, Users, ArrowRight, Sparkles, LogOut, User, UserX } from 'lucide-react';
+import { Zap, Trophy, Pencil, Users, ArrowRight, Sparkles, UserX } from 'lucide-react';
 // Google icon is not in lucide-react, so we use a small inline SVG component
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -18,10 +18,9 @@ function GoogleIcon({ className }: { className?: string }) {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { VolumeControl } from '@/components/volume-control';
-import { ThemeSwitcher } from '@/components/theme-switcher';
+import { AccountMenu, HeaderUtilities } from '@/components/header-controls';
 import { useAudio } from '@/components/audio-provider';
-import { supabase, getGuestSession, setGuestSession, clearGuestSession } from '@/lib/supabase';
+import { supabase, getGuestSession, setGuestSession } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 
 function randomGuestNickname(): string {
@@ -127,12 +126,6 @@ export default function Home() {
     }
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setNickname('');
-    setPassword('');
-  };
-
   const handleGuestLogin = () => {
     const guestNick = randomGuestNickname();
     setGuestSession({ nickname: guestNick, quizIds: [], quizTokens: {} });
@@ -159,11 +152,6 @@ export default function Home() {
     }
   };
 
-  const handleGuestLogout = () => {
-    clearGuestSession();
-    setGuestUser(null);
-  };
-
   const isLoggedIn = !!currentUser || !!guestUser;
 
   return (
@@ -179,21 +167,9 @@ export default function Home() {
             </div>
             <span className="text-xl font-bold">TrueMaQuiz</span>
           </div>
-          <div className="flex items-center gap-4">
-            <VolumeControl />
-            <ThemeSwitcher />
-            {(currentUser || guestUser) ? (
-              <div className="flex items-center gap-2">
-                <Link href="/dashboard" className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors hover:border-primary/50 ${guestUser ? 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/20' : 'bg-primary/10 border-primary/20 hover:bg-primary/20'}`}>
-                  {guestUser ? <UserX className="w-4 h-4 text-amber-500" /> : <User className="w-4 h-4 text-primary" />}
-                  <span className="text-sm font-medium">{guestUser?.nickname ?? currentUser?.nickname}</span>
-                  {guestUser && <span className="text-xs text-amber-500/80 hidden sm:inline">Guest</span>}
-                </Link>
-                <Button variant="ghost" size="icon" onClick={guestUser ? handleGuestLogout : handleLogout} title="Log out">
-                  <LogOut className="w-4 h-4" />
-                </Button>
-              </div>
-            ) : null}
+          <div className="flex items-center gap-2">
+            <HeaderUtilities />
+            <AccountMenu />
           </div>
         </nav>
 
@@ -287,8 +263,8 @@ export default function Home() {
                         <Input
                           value={nickname}
                           onChange={(e) => setNickname(e.target.value)}
-                          placeholder={authMode === 'register' ? 'At least 8 characters' : 'Your password'}
-                          maxLength={72}
+                          placeholder="4–20 characters"
+                          maxLength={20}
                           autoComplete="username"
                         />
                       </div>
@@ -298,8 +274,8 @@ export default function Home() {
                           type="password"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          placeholder="4–20 characters"
-                          maxLength={20}
+                          placeholder={authMode === 'register' ? 'At least 8 characters' : 'Your password'}
+                          maxLength={72}
                           autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
                         />
                       </div>

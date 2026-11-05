@@ -3,12 +3,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Plus, Trash2, GripVertical, Image as ImageIcon, Save, Check, X, Info, Sliders, Home, Type, UserX, List, ArrowUp, ArrowDown, ArrowRight as ArrowRightIcon, Play } from 'lucide-react';
-import { VolumeControl } from '@/components/volume-control';
-import { ThemeSwitcher } from '@/components/theme-switcher';
+import { ArrowLeft, Plus, Trash2, GripVertical, Image as ImageIcon, Save, Check, X, Info, Sliders, Type, List, ArrowUp, ArrowDown, ArrowRight as ArrowRightIcon, Play } from 'lucide-react';
 import { YouTubeEmbed, parseYouTubeId } from '@/components/youtube-embed';
 import { supabase, type Quiz, type Question, type QuestionType, getGuestSession } from '@/lib/supabase';
 import { saveQuiz } from '@/lib/game-api';
+import { AccountMenu, HeaderBack, HeaderUtilities } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -81,12 +80,10 @@ export default function QuizEditorPage() {
   const [description, setDescription] = useState('');
   const [coverImage, setCoverImage] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
-  const [isGuest, setIsGuest] = useState(false);
 
   useEffect(() => {
     const guest = getGuestSession();
     if (guest) {
-      setIsGuest(true);
       setAuthLoading(false);
       return;
     }
@@ -311,37 +308,25 @@ export default function QuizEditorPage() {
       <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border">
         <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => router.push('/dashboard')}>
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
+            <HeaderBack href="/dashboard" label="Back to my quizzes" />
             <div>
               <h1 className="text-xl font-bold">Edit quiz</h1>
               <p className="text-xs text-muted-foreground">{questions.length} questions</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <VolumeControl />
-            <ThemeSwitcher />
-            {isGuest && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-500">
-                <UserX className="w-3.5 h-3.5" /> Guest
-              </div>
-            )}
-            <Link href="/">
-              <Button variant="ghost" size="icon" title="Home">
-                <Home className="w-4 h-4" />
-              </Button>
-            </Link>
             {quizId && (
-              <Link href={`/practice/${quizId}`} target="_blank">
-                <Button variant="outline" className="gap-2">
+              <Button asChild variant="outline" className="gap-2">
+                <Link href={`/practice/${quizId}`} target="_blank">
                   <Play className="w-4 h-4" /> Practice
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             )}
             <Button onClick={saveAll} disabled={saving} className="gap-2">
               {saving ? 'Saving...' : <><Save className="w-4 h-4" /> Save</>}
             </Button>
+            <HeaderUtilities />
+            <AccountMenu />
           </div>
         </div>
       </div>

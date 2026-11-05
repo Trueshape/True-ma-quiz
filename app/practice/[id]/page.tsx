@@ -2,15 +2,13 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { ArrowLeft, ArrowRight, Check, X, Trophy, Zap, Loader2, RotateCcw, Home, Info, Sliders, ArrowUp, ArrowDown, Type, GripVertical } from 'lucide-react';
 import { supabase, type Quiz, type Question, computePoints, computeSliderPoints, computeReorderPoints, computeOpenPoints, getGuestSession } from '@/lib/supabase';
+import { HeaderBack, HeaderUtilities } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAudio } from '@/components/audio-provider';
-import { VolumeControl } from '@/components/volume-control';
-import { ThemeSwitcher } from '@/components/theme-switcher';
 import { QuestionMedia } from '@/components/question-media';
 import { cn } from '@/lib/utils';
 
@@ -282,6 +280,7 @@ export default function PracticePage() {
         {/* Top bar */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
+            <HeaderBack href="/" label="Exit practice" />
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
               <Zap className="w-4 h-4 text-white" fill="white" />
             </div>
@@ -293,15 +292,11 @@ export default function PracticePage() {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <VolumeControl />
-            <ThemeSwitcher />
-            <Link href="/">
-              <Button variant="ghost" size="icon" title="Home"><Home className="w-4 h-4" /></Button>
-            </Link>
+          <div className="flex items-center gap-2">
             <div className="px-3 py-1.5 rounded-lg bg-card border border-border text-sm">
               <span className="text-muted-foreground">Score:</span> <span className="font-bold tabular-nums">{score.toLocaleString()}</span>
             </div>
+            <HeaderUtilities />
           </div>
         </div>
 

@@ -2,16 +2,14 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { ArrowLeft, Check, X, Trophy, Zap, Users, Loader2, Info, ArrowRight, Home, ArrowUp, ArrowDown, Type, GripVertical } from 'lucide-react';
+import { ArrowLeft, Check, X, Trophy, Zap, Users, Loader2, Info, ArrowRight, ArrowUp, ArrowDown, Type, GripVertical } from 'lucide-react';
 import { supabase, type Session, type Player, type Question } from '@/lib/supabase';
 import { getPlayerLobbyCode, submitAnswer as submitAnswerRpc, type AnswerPayload } from '@/lib/game-api';
+import { HeaderBack, HeaderUtilities } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAudio } from '@/components/audio-provider';
-import { VolumeControl } from '@/components/volume-control';
-import { ThemeSwitcher } from '@/components/theme-switcher';
 import { QuestionMedia } from '@/components/question-media';
 import { cn } from '@/lib/utils';
 
@@ -290,23 +288,20 @@ export default function PlayPage() {
         {/* Top bar */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
+            <HeaderBack href="/" label="Leave game" />
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
               <Zap className="w-4 h-4 text-white" fill="white" />
             </div>
             <span className="font-bold">TrueMaQuiz</span>
           </div>
-          <div className="flex items-center gap-3">
-            <VolumeControl />
-            <ThemeSwitcher />
-            <Link href="/">
-              <Button variant="ghost" size="icon" title="Home"><Home className="w-4 h-4" /></Button>
-            </Link>
+          <div className="flex items-center gap-2">
             <div className="px-3 py-1.5 rounded-lg bg-card border border-border text-sm">
               <span className="text-muted-foreground">Score:</span> <span className="font-bold tabular-nums">{player.score.toLocaleString()}</span>
             </div>
             <div className="px-3 py-1.5 rounded-lg bg-card border border-border text-sm flex items-center gap-1.5">
               <Users className="w-3.5 h-3.5 text-muted-foreground" /> {players.length}
             </div>
+            <HeaderUtilities />
           </div>
         </div>
 

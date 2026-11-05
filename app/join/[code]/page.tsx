@@ -2,15 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, ArrowRight, Users, Zap, Home } from 'lucide-react';
+import { ArrowRight, Users, Zap, Home } from 'lucide-react';
 import type { Session } from '@/lib/supabase';
 import { getSessionByCode, joinSession } from '@/lib/game-api';
+import { HeaderBack, HeaderUtilities } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { VolumeControl } from '@/components/volume-control';
-import { ThemeSwitcher } from '@/components/theme-switcher';
 
 export default function JoinPage() {
   const params = useParams();
@@ -67,11 +66,8 @@ export default function JoinPage() {
       <div className="absolute top-1/3 left-1/4 w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-float" />
       <div className="relative z-10 w-full max-w-md">
         <div className="flex items-center justify-between mb-4">
-          <Button variant="ghost" size="sm" onClick={() => router.push('/')} className="gap-1.5">
-            <ArrowLeft className="w-4 h-4" /> Back home
-          </Button>
-          <VolumeControl />
-          <ThemeSwitcher />
+          <HeaderBack href="/" label="Back home" />
+          <HeaderUtilities />
         </div>
         <Card className="bg-card/60 backdrop-blur">
           <CardContent className="p-8">

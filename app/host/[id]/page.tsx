@@ -2,16 +2,14 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { ArrowLeft, Users, Play, ArrowRight, Trophy, Check, X, RotateCcw, Share2, Info, Sliders, Home, Type } from 'lucide-react';
+import { ArrowLeft, Users, Play, ArrowRight, Trophy, Check, X, RotateCcw, Share2, Info, Sliders, Type } from 'lucide-react';
 import { supabase, type Session, type Player, type Question, type Quiz } from '@/lib/supabase';
 import { getHostCode, getHostToken, hostUpdate, type HostUpdate } from '@/lib/game-api';
+import { HeaderBack, HeaderUtilities } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAudio } from '@/components/audio-provider';
-import { VolumeControl } from '@/components/volume-control';
-import { ThemeSwitcher } from '@/components/theme-switcher';
 import { QuestionMedia } from '@/components/question-media';
 import { cn } from '@/lib/utils';
 
@@ -228,6 +226,19 @@ export default function HostPage() {
     await update({ status: 'lobby', reset: true });
   };
 
+  // End the question early once every player has answered.
+  const endedQuestionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!session || session.status !== 'question' || !session.question_started_at) return;
+    const q = questions[session.current_question_index];
+    if (!q || q.type === 'info' || players.length === 0) return;
+    if (!players.every((p) => p.last_answered_index === session.current_question_index)) return;
+    if (endedQuestionRef.current === session.question_started_at) return;
+    endedQuestionRef.current = session.question_started_at;
+    toLeaderboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [players, session?.status, session?.current_question_index, session?.question_started_at]);
+
   if (loading || !session) {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground animate-pulse">Loading...</div>;
   }
@@ -245,9 +256,7 @@ export default function HostPage() {
       <div className="relative z-10 max-w-5xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => router.push('/dashboard')}>
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
+            <HeaderBack href="/dashboard" label="Back to my quizzes" />
             <div>
               <h1 className="text-xl font-bold">{quiz?.title || 'Host'}</h1>
               {quiz?.created_by && (
@@ -257,17 +266,13 @@ export default function HostPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <VolumeControl />
-            <ThemeSwitcher />
-            <Link href="/">
-              <Button variant="ghost" size="icon" title="Home"><Home className="w-4 h-4" /></Button>
-            </Link>
             <div className="px-3 py-1.5 rounded-lg bg-card border border-border font-mono font-bold text-sm tracking-wider">
               {code}
             </div>
             <Button variant="outline" size="icon" onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/join/${code}`); toast({ title: 'Join link copied' }); }}>
               <Share2 className="w-4 h-4" />
             </Button>
+            <HeaderUtilities />
           </div>
         </div>
 
