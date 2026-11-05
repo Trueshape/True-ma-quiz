@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Home, LogOut, User, UserX } from 'lucide-react';
+import { ArrowLeft, Home, LogOut } from 'lucide-react';
 import { supabase, getGuestSession, clearGuestSession } from '@/lib/supabase';
 import { deleteQuiz } from '@/lib/game-api';
 import { Button } from '@/components/ui/button';
@@ -77,13 +77,17 @@ export function HeaderEnd({ account: withAccount = true, home = true, homeLabel 
         <Link
           href="/dashboard"
           title="My quizzes"
-          className={`flex items-center gap-2 h-10 px-3 mr-2 rounded-lg border transition-colors hover:border-primary/50 ${
-            account.guest ? 'bg-amber-500/10 border-amber-500/30' : 'bg-primary/10 border-primary/20'
-          }`}
+          className="flex items-center gap-2 h-10 pl-2 pr-3 mr-2 rounded-lg transition-colors hover:bg-accent"
         >
-          {account.guest ? <UserX className="w-4 h-4 text-amber-500" /> : <User className="w-4 h-4 text-primary" />}
+          <span
+            className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-semibold ${
+              account.guest ? 'bg-amber-500 text-amber-950' : 'bg-primary text-primary-foreground'
+            }`}
+          >
+            {(account.nickname || '?').charAt(0).toUpperCase()}
+          </span>
           <span className="text-sm font-medium">{account.nickname}</span>
-          {account.guest && <span className="text-xs text-amber-500/80 hidden sm:inline">Guest</span>}
+          {account.guest && <span className="text-xs text-amber-500 hidden sm:inline">Guest</span>}
         </Link>
       )}
       <ThemeSwitcher />

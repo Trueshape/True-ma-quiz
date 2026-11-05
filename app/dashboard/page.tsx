@@ -282,11 +282,11 @@ export default function DashboardPage() {
                 </Link>
               </Button>
             )}
-            <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2">
-              <Upload className="w-4 h-4" /> Import
+            <Button variant="ghost" size="icon" onClick={() => setImportOpen(true)} title="Import quiz" aria-label="Import quiz">
+              <Upload className="w-4 h-4" />
             </Button>
-            <Button onClick={() => setCreateOpen(true)} className="gap-2">
-              <Plus className="w-4 h-4" /> New quiz
+            <Button variant="ghost" size="icon" onClick={() => setCreateOpen(true)} title="New quiz" aria-label="New quiz">
+              <Plus className="w-4 h-4" />
             </Button>
             <HeaderEnd />
           </div>
