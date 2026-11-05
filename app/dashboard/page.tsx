@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, Zap, Trophy, Users, MoreVertical, Play, ArrowRight, MonitorPlay, Trash2, UserX, Globe, Lock, Twitter, Facebook, Upload } from 'lucide-react';
 import { supabase, type Quiz, getGuestSession, removeGuestQuizId } from '@/lib/supabase';
 import { createQuiz as createQuizRpc, createSession, deleteQuiz, saveQuiz, setQuizPublic } from '@/lib/game-api';
-import { AccountMenu, HeaderBack, HeaderUtilities } from '@/components/header-controls';
+import { AccountMenu, HeaderHome, HeaderUtilities } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -267,7 +267,7 @@ export default function DashboardPage() {
       <div className="relative z-10 max-w-6xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <HeaderBack href="/" label="Home" />
+            <HeaderHome />
             <div>
               <h1 className="text-2xl font-bold">My Quizzes</h1>
               <p className="text-sm text-muted-foreground">
@@ -277,7 +277,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-2">
             {!isGuest && (
-              <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
+              <Button asChild variant="ghost" className="gap-1.5 text-muted-foreground">
                 <Link href="/library">
                   <Globe className="w-4 h-4" /> Browse quizzes
                 </Link>

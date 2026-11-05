@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Users, Play, ArrowRight, Trophy, Check, X, RotateCcw, Share2, Info, Sliders, Type } from 'lucide-react';
 import { supabase, type Session, type Player, type Question, type Quiz } from '@/lib/supabase';
 import { getHostCode, getHostToken, hostUpdate, type HostUpdate } from '@/lib/game-api';
-import { HeaderBack, HeaderUtilities } from '@/components/header-controls';
+import { HeaderBack, HeaderHome, HeaderUtilities } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -256,6 +256,7 @@ export default function HostPage() {
       <div className="relative z-10 max-w-5xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
+            <HeaderHome />
             <HeaderBack href="/dashboard" label="Back to my quizzes" />
             <div>
               <h1 className="text-xl font-bold">{quiz?.title || 'Host'}</h1>
@@ -266,7 +267,7 @@ export default function HostPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="px-3 py-1.5 rounded-lg bg-card border border-border font-mono font-bold text-sm tracking-wider">
+            <div className="h-10 flex items-center px-3 rounded-lg bg-card border border-border font-mono font-bold text-sm tracking-wider">
               {code}
             </div>
             <Button variant="outline" size="icon" onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/join/${code}`); toast({ title: 'Join link copied' }); }}>

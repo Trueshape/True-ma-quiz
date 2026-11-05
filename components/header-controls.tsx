@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, LogOut, User, UserX } from 'lucide-react';
+import { ArrowLeft, Home, LogOut, User, UserX } from 'lucide-react';
 import { supabase, getGuestSession, clearGuestSession } from '@/lib/supabase';
 import { deleteQuiz } from '@/lib/game-api';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { ThemeSwitcher } from '@/components/theme-switcher';
 
 /*
   Header layout used on every page:
-  - left:  one back button (always the same icon), then the logo or page title
+  - left:  Home button (every page except the landing page), an optional back button, then the logo or page title
   - right: page actions, then HeaderUtilities (volume, theme), then AccountMenu
 */
 
@@ -20,6 +20,16 @@ export function HeaderBack({ href, label }: { href: string; label: string }) {
     <Button asChild variant="ghost" size="icon" title={label} aria-label={label}>
       <Link href={href}>
         <ArrowLeft className="w-4 h-4" />
+      </Link>
+    </Button>
+  );
+}
+
+export function HeaderHome({ label = 'Home' }: { label?: string }) {
+  return (
+    <Button asChild variant="ghost" size="icon" title={label} aria-label={label}>
+      <Link href="/">
+        <Home className="w-4 h-4" />
       </Link>
     </Button>
   );
@@ -70,7 +80,7 @@ export function AccountMenu() {
       <Link
         href="/dashboard"
         title="My quizzes"
-        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors hover:border-primary/50 ${
+        className={`flex items-center gap-2 h-10 px-3 rounded-lg border transition-colors hover:border-primary/50 ${
           account.guest ? 'bg-amber-500/10 border-amber-500/30' : 'bg-primary/10 border-primary/20'
         }`}
       >

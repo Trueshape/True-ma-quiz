@@ -25,7 +25,7 @@ export function ThemeSwitcher() {
       <button
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all duration-200',
+          'flex items-center gap-2 h-10 px-3 rounded-lg border text-sm font-medium transition-all duration-200',
           'border-border bg-card/60 hover:bg-card hover:border-primary/40 text-muted-foreground hover:text-foreground',
           open && 'bg-card border-primary/40 text-foreground'
         )}

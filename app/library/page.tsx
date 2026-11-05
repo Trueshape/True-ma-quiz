@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Zap, Search, Globe, Users, Play, MonitorPlay, ArrowRight, BookOpen } from 'lucide-react';
 import { supabase, type Quiz, getGuestSession } from '@/lib/supabase';
 import { createSession } from '@/lib/game-api';
-import { AccountMenu, HeaderBack, HeaderUtilities } from '@/components/header-controls';
+import { AccountMenu, HeaderHome, HeaderUtilities } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -91,7 +91,7 @@ export default function LibraryPage() {
       <div className="relative z-10 max-w-6xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <HeaderBack href="/" label="Home" />
+            <HeaderHome />
             <div>
               <h1 className="text-2xl font-bold flex items-center gap-2">
                 <Globe className="w-6 h-6 text-primary" /> Public Library

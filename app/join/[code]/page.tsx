@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowRight, Users, Zap, Home } from 'lucide-react';
 import type { Session } from '@/lib/supabase';
 import { getSessionByCode, joinSession } from '@/lib/game-api';
-import { HeaderBack, HeaderUtilities } from '@/components/header-controls';
+import { HeaderHome, HeaderUtilities } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -66,7 +66,7 @@ export default function JoinPage() {
       <div className="absolute top-1/3 left-1/4 w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-float" />
       <div className="relative z-10 w-full max-w-md">
         <div className="flex items-center justify-between mb-4">
-          <HeaderBack href="/" label="Back home" />
+          <HeaderHome />
           <HeaderUtilities />
         </div>
         <Card className="bg-card/60 backdrop-blur">
