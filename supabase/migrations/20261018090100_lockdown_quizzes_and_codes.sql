@@ -57,3 +57,10 @@ BEGIN
 END $$;
 
 REVOKE EXECUTE ON FUNCTION join_session(uuid, text) FROM anon, authenticated;
+
+-- Internal helpers must not be callable from the browser (Supabase grants EXECUTE to anon by default).
+REVOKE EXECUTE ON FUNCTION quiz_can_edit(uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION g_time_factor(int, int, int) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION g_norm(text) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION g_lev(text, text) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION g_sim(text, text) FROM PUBLIC, anon, authenticated;
