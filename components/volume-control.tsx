@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { useAudio } from '@/components/audio-provider';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 export function VolumeControl() {
   const { volume, setVolume, isMuted, toggleMute } = useAudio();
@@ -23,19 +24,17 @@ export function VolumeControl() {
 
   return (
     <div ref={ref} className="relative">
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={() => setOpen((v) => !v)}
-        className={cn(
-          'flex items-center justify-center h-10 w-10 rounded-lg border transition-all duration-200',
-          'border-border bg-card/60 hover:bg-card hover:border-primary/40 text-muted-foreground hover:text-foreground',
-          open && 'bg-card border-primary/40 text-foreground'
-        )}
+        className={cn(open && 'bg-accent text-accent-foreground')}
         title="Volume"
         aria-label="Volume"
         aria-expanded={open}
       >
         <Icon className="w-4 h-4" />
-      </button>
+      </Button>
 
       <div
         className={cn(

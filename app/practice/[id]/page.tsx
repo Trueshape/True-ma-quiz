@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Check, X, Trophy, Zap, Loader2, RotateCcw, Home, Info, Sliders, ArrowUp, ArrowDown, Type, GripVertical } from 'lucide-react';
 import { supabase, type Quiz, type Question, computePoints, computeSliderPoints, computeReorderPoints, computeOpenPoints, getGuestSession } from '@/lib/supabase';
-import { HeaderHome, HeaderUtilities } from '@/components/header-controls';
+import { HeaderEnd } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -280,10 +281,9 @@ export default function PracticePage() {
         {/* Top bar */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
-            <HeaderHome label="Exit practice" />
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+            <Link href="/" title="Exit practice" aria-label="TrueMaQuiz home" className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
               <Zap className="w-4 h-4 text-white" fill="white" />
-            </div>
+            </Link>
             <div>
               <span className="font-bold block leading-tight">Practice Mode</span>
               <span className="text-xs text-muted-foreground">{quiz.title}</span>
@@ -296,7 +296,7 @@ export default function PracticePage() {
             <div className="h-10 flex items-center px-3 rounded-lg bg-card border border-border text-sm">
               <span className="text-muted-foreground">Score:</span> <span className="font-bold tabular-nums">{score.toLocaleString()}</span>
             </div>
-            <HeaderUtilities />
+            <HeaderEnd account={false} homeLabel="Exit practice" />
           </div>
         </div>
 

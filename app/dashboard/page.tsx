@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, Zap, Trophy, Users, MoreVertical, Play, ArrowRight, MonitorPlay, Trash2, UserX, Globe, Lock, Twitter, Facebook, Upload } from 'lucide-react';
 import { supabase, type Quiz, getGuestSession, removeGuestQuizId } from '@/lib/supabase';
 import { createQuiz as createQuizRpc, createSession, deleteQuiz, saveQuiz, setQuizPublic } from '@/lib/game-api';
-import { AccountMenu, HeaderHome, HeaderUtilities } from '@/components/header-controls';
+import { HeaderEnd } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -267,7 +267,6 @@ export default function DashboardPage() {
       <div className="relative z-10 max-w-6xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <HeaderHome />
             <div>
               <h1 className="text-2xl font-bold">My Quizzes</h1>
               <p className="text-sm text-muted-foreground">
@@ -289,8 +288,7 @@ export default function DashboardPage() {
             <Button onClick={() => setCreateOpen(true)} className="gap-2">
               <Plus className="w-4 h-4" /> New quiz
             </Button>
-            <HeaderUtilities />
-            <AccountMenu />
+            <HeaderEnd />
           </div>
         </div>
 

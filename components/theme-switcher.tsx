@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Palette, Check } from 'lucide-react';
 import { useTheme, THEMES, type ThemeId } from '@/components/theme-provider';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 export function ThemeSwitcher() {
   const { theme, setTheme } = useTheme();
@@ -18,27 +19,19 @@ export function ThemeSwitcher() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const current = THEMES.find((t) => t.id === theme) ?? THEMES[0];
-
   return (
     <div ref={ref} className="relative">
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={() => setOpen((v) => !v)}
-        className={cn(
-          'flex items-center gap-2 h-10 px-3 rounded-lg border text-sm font-medium transition-all duration-200',
-          'border-border bg-card/60 hover:bg-card hover:border-primary/40 text-muted-foreground hover:text-foreground',
-          open && 'bg-card border-primary/40 text-foreground'
-        )}
+        className={cn(open && 'bg-accent text-accent-foreground')}
         title="Change theme"
+        aria-label="Change theme"
+        aria-expanded={open}
       >
         <Palette className="w-4 h-4" />
-        <span className="hidden sm:inline">{current.label}</span>
-        <div className="flex gap-0.5">
-          {current.swatch.map((c, i) => (
-            <span key={i} className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c }} />
-          ))}
-        </div>
-      </button>
+      </Button>
 
       {/* Dropdown panel */}
       <div

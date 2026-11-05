@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Check, X, Trophy, Zap, Users, Loader2, Info, ArrowRight, ArrowUp, ArrowDown, Type, GripVertical } from 'lucide-react';
 import { supabase, type Session, type Player, type Question } from '@/lib/supabase';
 import { getPlayerLobbyCode, submitAnswer as submitAnswerRpc, type AnswerPayload } from '@/lib/game-api';
-import { HeaderHome, HeaderUtilities } from '@/components/header-controls';
+import { HeaderEnd } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -287,13 +288,12 @@ export default function PlayPage() {
       <div className="relative z-10 max-w-3xl mx-auto px-4 py-6">
         {/* Top bar */}
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <HeaderHome label="Leave game" />
+          <Link href="/" className="flex items-center gap-2" title="Leave game" aria-label="TrueMaQuiz home">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
               <Zap className="w-4 h-4 text-white" fill="white" />
             </div>
             <span className="font-bold">TrueMaQuiz</span>
-          </div>
+          </Link>
           <div className="flex items-center gap-2">
             <div className="h-10 flex items-center px-3 rounded-lg bg-card border border-border text-sm">
               <span className="text-muted-foreground">Score:</span> <span className="font-bold tabular-nums">{player.score.toLocaleString()}</span>
@@ -301,7 +301,7 @@ export default function PlayPage() {
             <div className="h-10 flex items-center px-3 rounded-lg bg-card border border-border text-sm gap-1.5">
               <Users className="w-3.5 h-3.5 text-muted-foreground" /> {players.length}
             </div>
-            <HeaderUtilities />
+            <HeaderEnd account={false} homeLabel="Leave game" />
           </div>
         </div>
 

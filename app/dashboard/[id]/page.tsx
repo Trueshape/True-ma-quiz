@@ -7,7 +7,7 @@ import { ArrowLeft, Plus, Trash2, GripVertical, Image as ImageIcon, Save, Check,
 import { YouTubeEmbed, parseYouTubeId } from '@/components/youtube-embed';
 import { supabase, type Quiz, type Question, type QuestionType, getGuestSession } from '@/lib/supabase';
 import { saveQuiz } from '@/lib/game-api';
-import { AccountMenu, HeaderBack, HeaderHome, HeaderUtilities } from '@/components/header-controls';
+import { HeaderBack, HeaderEnd } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -308,7 +308,6 @@ export default function QuizEditorPage() {
       <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border">
         <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <HeaderHome />
             <HeaderBack href="/dashboard" label="Back to my quizzes" />
             <div>
               <h1 className="text-xl font-bold">Edit quiz</h1>
@@ -326,8 +325,7 @@ export default function QuizEditorPage() {
             <Button onClick={saveAll} disabled={saving} className="gap-2">
               {saving ? 'Saving...' : <><Save className="w-4 h-4" /> Save</>}
             </Button>
-            <HeaderUtilities />
-            <AccountMenu />
+            <HeaderEnd />
           </div>
         </div>
       </div>

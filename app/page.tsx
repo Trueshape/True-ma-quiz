@@ -18,7 +18,7 @@ function GoogleIcon({ className }: { className?: string }) {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { AccountMenu, HeaderUtilities } from '@/components/header-controls';
+import { HeaderEnd } from '@/components/header-controls';
 import { useAudio } from '@/components/audio-provider';
 import { supabase, getGuestSession, setGuestSession } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
@@ -161,16 +161,13 @@ export default function Home() {
 
       <div className="relative z-10 max-w-6xl mx-auto px-6 py-8">
         <nav className="flex items-center justify-between mb-20">
-          <div className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2" title="Home" aria-label="TrueMaQuiz home">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
               <Zap className="w-5 h-5 text-white" fill="white" />
             </div>
             <span className="text-xl font-bold">TrueMaQuiz</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <HeaderUtilities />
-            <AccountMenu />
-          </div>
+          </Link>
+          <HeaderEnd home={false} />
         </nav>
 
         <div className="grid lg:grid-cols-2 gap-12 items-center">
