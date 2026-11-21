@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Check, X } from 'lucide-react';
 import type { Question } from '@/lib/supabase';
 import {
-  blankHint, blankPrompt, blanksConfig, blockyConfig, computeBlanksPoints, dezoomConfig, dezoomLevel, isRevealType,
-  parseBlanks, revealProgress, revealedTiles, tileOrder, type BlockyConfig, type DezoomConfig,
+  MAX_TILES, blankHint, blankPrompt, blanksConfig, blockyConfig, computeBlanksPoints, dezoomConfig, dezoomLevel, extraLetters,
+  isRevealType, parseBlanks, revealProgress, revealedTiles, squareGrid, tileOrder, type BlockyConfig, type DezoomConfig,
 } from '@/lib/reveal';
 import { computeOpenPoints } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -48,7 +48,12 @@ export function BlockyImage({
 }: { src: string; config: BlockyConfig; seed: string; shown: number; className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [img, setImg] = useState<HTMLImageElement | null>(null);
-  const order = useMemo(() => tileOrder(config.grid, config.order, seed), [config.grid, config.order, seed]);
+  // Columns and rows saved by the editor; for an imported question, worked out from the picture.
+  const grid = useMemo(() => {
+    if (config.cols != null && config.rows != null) return { cols: config.cols, rows: config.rows };
+    return img ? squareGrid(config.tiles, img.naturalWidth, img.naturalHeight) : null;
+  }, [config.cols, config.rows, config.tiles, img]);
+  const order = useMemo(() => (grid ? tileOrder(grid.cols, grid.rows, config.order, seed) : []), [grid, config.order, seed]);
 
   useEffect(() => {
     const image = new Image();
@@ -62,41 +67,46 @@ export function BlockyImage({
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx || !img) return;
-    const scale = Math.min(1, MAX_CANVAS / Math.max(img.naturalWidth, img.naturalHeight));
-    const w = Math.round(img.naturalWidth * scale);
-    const h = Math.round(img.naturalHeight * scale);
+    if (!canvas || !ctx || !img || !grid) return;
+    const { cols, rows } = grid;
+    // Square tiles: the picture is cropped around its centre to cols x rows squares.
+    const side = Math.min(img.naturalWidth / cols, img.naturalHeight / rows);
+    const cropW = side * cols;
+    const cropH = side * rows;
+    const ox = (img.naturalWidth - cropW) / 2;
+    const oy = (img.naturalHeight - cropH) / 2;
+    const scale = Math.min(1, MAX_CANVAS / Math.max(cropW, cropH));
+    const w = Math.round(cropW * scale);
+    const h = Math.round(cropH * scale);
     canvas.width = w;
     canvas.height = h;
 
-    // Hidden squares: the image shrunk to one pixel per square, then stretched back, so
-    // each square shows only its average colour. Sharp edges give the pixel style,
-    // smoothing gives the blur style.
+    // Hidden tiles: the picture shrunk to a few pixels per tile, then stretched back.
+    // Pixel style: one colour per tile, sharp edges. Blur style: smoothed, the stronger
+    // the blur the fewer pixels are kept.
+    const perTile = config.style === 'pixel' ? 1 : Math.pow(2, 3 - config.blur);
     const small = document.createElement('canvas');
-    small.width = config.grid;
-    small.height = config.grid;
-    small.getContext('2d')?.drawImage(img, 0, 0, small.width, small.height);
+    small.width = Math.max(1, Math.round(cols * perTile));
+    small.height = Math.max(1, Math.round(rows * perTile));
+    small.getContext('2d')?.drawImage(img, ox, oy, cropW, cropH, 0, 0, small.width, small.height);
     ctx.imageSmoothingEnabled = config.style === 'blur';
     ctx.drawImage(small, 0, 0, w, h);
     ctx.imageSmoothingEnabled = true;
 
-    const tw = w / config.grid;
-    const th = h / config.grid;
+    const t = w / cols;
     const visible = new Set(order.slice(0, shown));
-    for (let i = 0; i < config.grid * config.grid; i++) {
-      const x = (i % config.grid) * tw;
-      const y = Math.floor(i / config.grid) * th;
+    for (let i = 0; i < cols * rows; i++) {
+      const x = (i % cols) * t;
+      const y = Math.floor(i / cols) * t;
       if (visible.has(i)) {
-        const sx = x / scale;
-        const sy = y / scale;
-        ctx.drawImage(img, sx, sy, tw / scale, th / scale, x, y, tw, th);
+        ctx.drawImage(img, ox + x / scale, oy + y / scale, t / scale, t / scale, x, y, t, t);
       } else {
         ctx.strokeStyle = 'rgba(0,0,0,0.35)';
         ctx.lineWidth = 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, tw - 1, th - 1);
+        ctx.strokeRect(x + 0.5, y + 0.5, t - 1, t - 1);
       }
     }
-  }, [img, shown, order, config.grid, config.style]);
+  }, [img, grid, shown, order, config.style, config.blur]);
 
   return <canvas ref={canvasRef} role="img" aria-label="Hidden picture" className={cn('block mx-auto rounded-xl max-w-full h-auto', className)} />;
 }
@@ -108,21 +118,26 @@ export function RevealImage({ question, elapsedMs, done = false, className }: { 
     return <DezoomImage src={question.image_url} config={dezoomConfig(question)} progress={done ? 1 : revealProgress(question, elapsedMs)} className={className} />;
   }
   const c = blockyConfig(question);
-  return <BlockyImage src={question.image_url} config={c} seed={question.id} shown={done ? c.grid * c.grid : revealedTiles(c, elapsedMs)} className={className} />;
+  return <BlockyImage src={question.image_url} config={c} seed={question.id} shown={done ? MAX_TILES : revealedTiles(c, elapsedMs)} className={className} />;
 }
 
 // ─── blanks ──────────────────────────────────────────────────────────────────
 
 export function BlanksInputs({
-  question, values, onChange, disabled, onEnter,
-}: { question: Pick<Question, 'prompt' | 'reveal_config'>; values: string[]; onChange: (v: string[]) => void; disabled?: boolean; onEnter?: () => void }) {
+  question, values, onChange, disabled, onEnter, elapsedMs = 0,
+}: {
+  question: Pick<Question, 'prompt' | 'reveal_config'>; values: string[]; onChange: (v: string[]) => void; disabled?: boolean; onEnter?: () => void;
+  /** Time since the question started: more letters appear as it passes. */
+  elapsedMs?: number;
+}) {
   const { parts, answers } = parseBlanks(question.prompt);
-  const { hint } = blanksConfig(question);
+  const config = blanksConfig(question);
+  const extra = extraLetters(config, elapsedMs);
   return (
     <p className="text-xl md:text-2xl font-semibold leading-[2.6] text-center">
       {parts.map((p, k) => {
         if (typeof p === 'string') return <span key={k} className="whitespace-pre-wrap">{p}</span>;
-        const placeholder = blankHint(answers[p], hint);
+        const placeholder = blankHint(answers[p], config.hint, extra);
         const width = Math.max(5, (answers[p][0] ?? '').length + 2, placeholder.length);
         return (
           <input
@@ -213,7 +228,7 @@ export function NewTypeQuestionView({
       <Card className="mb-6 animate-pop">
         <CardContent className="p-6 space-y-6">
           {isBlanks ? (
-            <BlanksInputs question={question} values={blanks} onChange={setBlanks} disabled={hasAnswered} onEnter={submit} />
+            <BlanksInputs question={question} values={blanks} onChange={setBlanks} disabled={hasAnswered} onEnter={submit} elapsedMs={elapsed} />
           ) : (
             <>
               <RevealImage question={question} elapsedMs={elapsed} className="max-h-[50vh]" />

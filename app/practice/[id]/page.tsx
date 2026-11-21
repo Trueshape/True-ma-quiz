@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Check, X, Trophy, Zap, Loader2, RotateCcw, Home, Info, Sliders, ArrowUp, ArrowDown, Type, GripVertical } from 'lucide-react';
-import { supabase, type Quiz, type Question, computePoints, computeSliderPoints, computeReorderPoints, computeOpenPoints, getGuestSession } from '@/lib/supabase';
+import { supabase, type Quiz, type Question, computePoints, computeSliderPoints, computeReorderPoints, computeOpenPoints, decayStartMs, getGuestSession } from '@/lib/supabase';
 import { HeaderEnd } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -160,7 +160,7 @@ export default function PracticePage() {
 
     const timeTaken = Date.now() - questionStartRef.current;
     const isCorrect = optionIndex === currentQ.correct_index;
-    const points = computePoints(isCorrect, timeTaken, currentQ.time_limit_ms, currentQ.points_value);
+    const points = computePoints(isCorrect, timeTaken, currentQ.time_limit_ms, currentQ.points_value, decayStartMs(currentQ) ?? currentQ.time_limit_ms);
 
     setLastPoints(points);
     if (isCorrect) {
@@ -184,7 +184,7 @@ export default function PracticePage() {
     const answer = currentQ.slider_answer ?? 0;
     const min = currentQ.slider_min ?? 0;
     const max = currentQ.slider_max ?? 100;
-    const points = computeSliderPoints(value, answer, min, max, currentQ.points_value, timeTaken, currentQ.time_limit_ms);
+    const points = computeSliderPoints(value, answer, min, max, currentQ.points_value, timeTaken, currentQ.time_limit_ms, decayStartMs(currentQ));
     const isCorrect = value === answer;
 
     setLastPoints(points);
@@ -205,8 +205,8 @@ export default function PracticePage() {
 
     const timeTaken = Date.now() - questionStartRef.current;
     const correctOrder = currentQ.reorder_correct_order ?? [];
-    const points = computeReorderPoints(order, correctOrder, currentQ.points_value, timeTaken, currentQ.time_limit_ms);
-    const isCorrect = points >= currentQ.points_value;
+    const points = computeReorderPoints(order, correctOrder, currentQ.points_value, timeTaken, currentQ.time_limit_ms, decayStartMs(currentQ));
+    const isCorrect = correctOrder.length > 0 && correctOrder.every((v, i) => order[i] === v);
 
     setLastPoints(points);
     setScore((s) => s + points);
@@ -226,7 +226,7 @@ export default function PracticePage() {
 
     const timeTaken = Date.now() - questionStartRef.current;
     const accepted = currentQ.open_answers ?? [];
-    const { points, isCorrect } = computeOpenPoints(text, accepted, currentQ.points_value, timeTaken, currentQ.time_limit_ms);
+    const { points, isCorrect } = computeOpenPoints(text, accepted, currentQ.points_value, timeTaken, currentQ.time_limit_ms, decayStartMs(currentQ) ?? currentQ.time_limit_ms);
 
     setLastPoints(points);
     setScore((s) => s + points);

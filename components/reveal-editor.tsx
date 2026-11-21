@@ -3,12 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Image as ImageIcon, Loader2, Pause, Play, Plus, Upload, X } from 'lucide-react';
 import type { Question, QuestionType } from '@/lib/supabase';
-import { getGuestSession } from '@/lib/supabase';
+import { decayStartMs, getGuestSession, timeFactor } from '@/lib/supabase';
 import {
-  MAX_BLANKS, MIN_REVEAL_FACTOR, blankHint, blanksConfig, blockyConfig, dezoomConfig, parseBlanks, revealProgress,
-  type RevealConfig,
+  MAX_BLANKS, MAX_TILES, MIN_TILES, blankHint, blanksConfig, blockyConfig, blockyTotal, dezoomConfig, parseBlanks,
+  revealFactor, squareGrid, type RevealConfig,
 } from '@/lib/reveal';
-import { uploadQuestionImage } from '@/lib/image-upload';
+import { QUESTION_IMAGE_ACCEPT, QUESTION_IMAGE_MAX_MB, uploadQuestionImage } from '@/lib/image-upload';
 import { BlanksInputs, RevealImage } from '@/components/reveal-question';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 /*
   Editor settings of the dezoom, blocky and blanks question types: the picture (URL or
   upload, resized before upload), the reveal settings, an animated preview, the accepted
-  answers, and for blanks the gaps and the hint.
+  answers, and for blanks the gaps, the hint and the letters given over time.
 */
 
 export type RevealDraft = {
@@ -29,11 +29,13 @@ export type RevealDraft = {
   reveal_config: RevealConfig;
   time_limit_ms: number;
   points_value: number;
+  points_decay_start_ms: number | null;
 };
 
 type Props = { question: RevealDraft; onChange: (patch: Partial<RevealDraft>) => void };
 
 const label = 'text-xs font-medium text-muted-foreground mb-1.5 flex items-center justify-between';
+const secs = (ms: number) => `${Math.round(ms / 100) / 10}s`;
 
 function Range({ name, value, min, max, step, shown, onChange }: { name: string; value: number; min: number; max: number; step: number; shown: string; onChange: (v: number) => void }) {
   return (
@@ -108,7 +110,7 @@ function ImageField({ value, onChange }: { value: string; onChange: (url: string
         <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="https://… image URL" className="flex-1" aria-label="Picture URL" />
         {canUpload && (
           <>
-            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={pick} aria-label="Upload a picture" />
+            <input ref={fileRef} type="file" accept={QUESTION_IMAGE_ACCEPT} className="hidden" onChange={pick} aria-label="Upload a picture" />
             <Button type="button" variant="outline" className="gap-2 shrink-0" onClick={() => fileRef.current?.click()} disabled={busy}>
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Upload
             </Button>
@@ -116,40 +118,74 @@ function ImageField({ value, onChange }: { value: string; onChange: (url: string
         )}
       </div>
       <p className="text-xs text-muted-foreground mt-1">
-        {canUpload ? 'Uploads are resized to 1600 px and compressed, so they load fast on phones.' : 'Guests can paste an image URL. Sign in to upload pictures.'}
+        {canUpload
+          ? `JPG, PNG, WebP, GIF, AVIF or BMP from your device, ${QUESTION_IMAGE_MAX_MB} MB at most. Resized to 1600 px so it loads fast on phones.`
+          : 'Guests can paste an image URL. Sign in to upload pictures from your device.'}
       </p>
       {error && <p role="alert" className="text-xs text-destructive mt-1">{error}</p>}
     </div>
   );
 }
 
+/** Drag the circle (or click, or use the arrow keys) to choose where the zoom starts. */
 function FocusPicker({ src, x, y, onPick }: { src: string; x: number; y: number; onPick: (x: number, y: number) => void }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const round = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 100) / 100;
+  const pickAt = (clientX: number, clientY: number) => {
+    const r = boxRef.current?.getBoundingClientRect();
+    if (!r || !r.width || !r.height) return;
+    onPick(round((clientX - r.left) / r.width), round((clientY - r.top) / r.height));
+  };
+
   return (
     <div>
       <span className={label}>
-        <span className="flex items-center gap-1.5"><Crosshair className="w-3.5 h-3.5" /> Zoom point — click on the picture</span>
+        <span className="flex items-center gap-1.5"><Crosshair className="w-3.5 h-3.5" /> Zoom point — drag the circle</span>
+        <span className="tabular-nums">{Math.round(x * 100)}%, {Math.round(y * 100)}%</span>
       </span>
-      <button
-        type="button"
-        aria-label="Choose the zoom point"
-        className="relative block mx-auto rounded-lg overflow-hidden border border-border cursor-crosshair"
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          const round = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 100) / 100;
-          onPick(round((e.clientX - r.left) / r.width), round((e.clientY - r.top) / r.height));
+      <div
+        ref={boxRef}
+        role="slider"
+        tabIndex={0}
+        aria-label="Zoom point"
+        aria-valuetext={`${Math.round(x * 100)}% from the left, ${Math.round(y * 100)}% from the top`}
+        className="relative w-fit mx-auto rounded-lg overflow-hidden border border-border cursor-crosshair touch-none select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onPointerDown={(e) => {
+          dragging.current = true;
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+          pickAt(e.clientX, e.clientY);
+        }}
+        onPointerMove={(e) => {
+          if (dragging.current) pickAt(e.clientX, e.clientY);
+        }}
+        onPointerUp={() => {
+          dragging.current = false;
+        }}
+        onPointerCancel={() => {
+          dragging.current = false;
+        }}
+        onKeyDown={(e) => {
+          const step = e.shiftKey ? 0.1 : 0.02;
+          const moves: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+          const m = moves[e.key];
+          if (!m) return;
+          e.preventDefault();
+          onPick(round(x + m[0]), round(y + m[1]));
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt="" className="block max-h-56 max-w-full" draggable={false} />
+        <img src={src} alt="" className="block max-h-56 max-w-full pointer-events-none" draggable={false} />
         <span
-          className="absolute w-6 h-6 -ml-3 -mt-3 rounded-full border-2 border-white shadow-[0_0_0_2px_rgba(0,0,0,0.6)] pointer-events-none"
+          className="absolute w-7 h-7 -ml-3.5 -mt-3.5 rounded-full border-2 border-white bg-white/20 shadow-[0_0_0_2px_rgba(0,0,0,0.6)] pointer-events-none"
           style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
         />
-      </button>
+      </div>
     </div>
   );
 }
 
+/** Plays the question as players see it, with what a right answer is worth at each moment. */
 function Preview({ question }: { question: RevealDraft }) {
   const [ms, setMs] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -169,18 +205,22 @@ function Preview({ question }: { question: RevealDraft }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, limit]);
 
-  // Same id as in the game, so the squares appear in the same order.
+  // Same id as in the game, so the tiles appear in the same order.
   const q = { ...question, id: question.id ?? 'preview' } as unknown as Question;
-  const factor = Math.max(MIN_REVEAL_FACTOR, 1 - revealProgress(q, ms));
+  const factor = question.type === 'blanks' ? timeFactor(ms, limit, decayStartMs(q) ?? limit) : revealFactor(q, ms);
   return (
     <div className="space-y-3 p-3 rounded-lg border border-border bg-card/40">
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 text-xs text-muted-foreground">
         <span className="font-medium">Preview — what players see</span>
         <span>
-          at {Math.round(ms / 1000)}s a right answer is worth <span className="font-bold text-foreground">{Math.round(question.points_value * factor)}</span> points
+          at {secs(ms)} a right answer is worth <span className="font-bold text-foreground">{Math.round(question.points_value * factor)}</span> points
         </span>
       </div>
-      <RevealImage question={q} elapsedMs={ms} className="max-h-64" />
+      {question.type === 'blanks' ? (
+        <BlanksInputs question={q} values={[]} onChange={() => {}} disabled elapsedMs={ms} />
+      ) : (
+        <RevealImage question={q} elapsedMs={ms} className="max-h-64" />
+      )}
       <div className="flex items-center gap-3">
         <Button
           type="button"
@@ -240,21 +280,82 @@ function AcceptedAnswers({ answers, onChange }: { answers: string[]; onChange: (
   );
 }
 
+/** Natural size of a picture, once it has loaded. */
+function useImageSize(src: string) {
+  const [size, setSize] = useState<{ src: string; w: number; h: number } | null>(null);
+  useEffect(() => {
+    if (!src) return;
+    const img = new Image();
+    img.onload = () => setSize({ src, w: img.naturalWidth, h: img.naturalHeight });
+    img.src = src;
+    return () => {
+      img.onload = null;
+    };
+  }, [src]);
+  return size && size.src === src ? size : null;
+}
+
+function BlockySettings({ question, set }: { question: RevealDraft; set: (patch: RevealConfig) => void }) {
+  const c = blockyConfig(question as unknown as Question);
+  const size = useImageSize(question.image_url);
+  const fit = size ? squareGrid(c.tiles, size.w, size.h) : null;
+
+  // Keep the saved columns and rows in step with the picture and the number of tiles,
+  // so the tiles are square and the server counts the same tiles as the players see.
+  useEffect(() => {
+    if (fit && (fit.cols !== c.cols || fit.rows !== c.rows)) {
+      set({ cols: fit.cols, rows: fit.rows, grid: undefined, tiles: c.tiles, tiles_per_step: Math.min(c.tiles_per_step, fit.cols * fit.rows) });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fit?.cols, fit?.rows]);
+
+  const total = blockyTotal(c);
+  const fullAt = Math.ceil(total / c.tiles_per_step) * c.step_ms;
+  return (
+    <>
+      <div className="grid sm:grid-cols-3 gap-4">
+        <Range name="Tiles in total" value={c.tiles} min={MIN_TILES} max={MAX_TILES} step={1} shown={String(c.tiles)}
+          onChange={(v) => set({ tiles: v })} />
+        <Range name="Tiles shown each time" value={c.tiles_per_step} min={1} max={Math.min(total, 20)} step={1} shown={String(c.tiles_per_step)}
+          onChange={(v) => set({ tiles_per_step: v })} />
+        <Range name="Every" value={c.step_ms} min={500} max={10000} step={500} shown={secs(c.step_ms)}
+          onChange={(v) => set({ step_ms: v })} />
+      </div>
+      <p className={cn('text-xs', fullAt > question.time_limit_ms ? 'text-amber-400' : 'text-muted-foreground')}>
+        {c.cols != null && c.rows != null ? `${c.cols} × ${c.rows} = ${total} square tiles. ` : 'Add a picture to fit the tiles to it. '}
+        The whole picture is visible after {Math.round(fullAt / 1000)}s
+        {fullAt > question.time_limit_ms ? ` — longer than the ${Math.round(question.time_limit_ms / 1000)}s time limit, so part of it stays hidden.` : '.'}
+      </p>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Choice name="Order" value={c.order} onChange={(v) => set({ order: v })}
+          options={[{ value: 'random', label: 'Random' }, { value: 'spiral', label: 'Centre outwards' }, { value: 'edges', label: 'Edges inwards' }]} />
+        <Choice name="Hidden tiles" value={c.style} onChange={(v) => set({ style: v })}
+          options={[{ value: 'pixel', label: 'Pixelated' }, { value: 'blur', label: 'Blurred' }]} />
+      </div>
+      {c.style === 'blur' && (
+        <Range name="Blur strength" value={c.blur} min={1} max={5} step={1} shown={['', 'Light', 'Soft', 'Medium', 'Strong', 'Very strong'][c.blur]}
+          onChange={(v) => set({ blur: v })} />
+      )}
+    </>
+  );
+}
+
 export function RevealSettings({ question, onChange }: Props) {
   const cfg = question.reveal_config ?? {};
   const set = (patch: RevealConfig) => onChange({ reveal_config: { ...cfg, ...patch } });
 
   if (question.type === 'blanks') {
     const { answers } = parseBlanks(question.prompt);
-    const { hint } = blanksConfig(question);
+    const c = blanksConfig(question);
     const empty = answers.findIndex((a) => a.length === 0);
+    const valid = answers.length > 0 && answers.length <= MAX_BLANKS && empty < 0;
     return (
       <div className="space-y-4">
         <div className="p-3 rounded-lg bg-card/50 border border-border text-xs text-muted-foreground space-y-1">
           <p>Write the sentence above and put each missing word in double braces, with other accepted answers after a |</p>
           <p className="font-mono text-foreground">La capitale della {'{{'}Francia{'}}'} è {'{{'}Parigi|Paris{'}}'}</p>
         </div>
-        <p className={cn('text-xs font-medium', answers.length === 0 || answers.length > MAX_BLANKS || empty >= 0 ? 'text-destructive' : 'text-emerald-400')}>
+        <p className={cn('text-xs font-medium', valid ? 'text-emerald-400' : 'text-destructive')}>
           {answers.length === 0
             ? 'No blanks yet.'
             : answers.length > MAX_BLANKS
@@ -263,72 +364,44 @@ export function RevealSettings({ question, onChange }: Props) {
                 ? `Blank ${empty + 1} has no answer.`
                 : `${answers.length} blank${answers.length > 1 ? 's' : ''}: ${answers.map((a) => a.join(' / ')).join(' · ')}`}
         </p>
-        <Choice
-          name="Hint inside each blank"
-          value={hint}
-          options={[
-            { value: 'none', label: 'None' },
-            { value: 'length', label: `Length (${blankHint(['Parigi'], 'length')})` },
-            { value: 'first', label: `First letter (${blankHint(['Parigi'], 'first')})` },
-          ]}
-          onChange={(v) => set({ hint: v })}
-        />
-        {answers.length > 0 && answers.length <= MAX_BLANKS && (
-          <div className="p-3 rounded-lg border border-border bg-card/40">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Preview — what players see</p>
-            <BlanksInputs question={{ prompt: question.prompt, reveal_config: question.reveal_config }} values={[]} onChange={() => {}} disabled />
-          </div>
-        )}
-        <p className="text-xs text-muted-foreground">Each right blank gives its share of the points; answering sooner gives more.</p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Choice
+            name="Hint at the start"
+            value={c.hint}
+            options={[
+              { value: 'none', label: 'None' },
+              { value: 'length', label: `Length (${blankHint(['Parigi'], 'length')})` },
+              { value: 'first', label: `First letter (${blankHint(['Parigi'], 'first')})` },
+            ]}
+            onChange={(v) => set({ hint: v })}
+          />
+          <Range name="One more letter every" value={c.letter_every_ms} min={0} max={15000} step={1000}
+            shown={c.letter_every_ms ? secs(c.letter_every_ms) : 'Off'} onChange={(v) => set({ letter_every_ms: v })} />
+        </div>
+        {valid && <Preview question={question} />}
+        <p className="text-xs text-muted-foreground">Each right blank gives its share of the points. The last letter of a word is never given away.</p>
       </div>
     );
   }
 
   const q = question as unknown as Question;
+  const d = dezoomConfig(q);
   return (
     <div className="space-y-4">
       <ImageField value={question.image_url} onChange={(url) => onChange({ image_url: url })} />
 
       {question.type === 'dezoom' ? (
         <>
-          {question.image_url && (
-            <FocusPicker src={question.image_url} x={dezoomConfig(q).focus_x} y={dezoomConfig(q).focus_y} onPick={(focus_x, focus_y) => set({ focus_x, focus_y })} />
-          )}
+          {question.image_url && <FocusPicker src={question.image_url} x={d.focus_x} y={d.focus_y} onPick={(focus_x, focus_y) => set({ focus_x, focus_y })} />}
           <div className="grid sm:grid-cols-2 gap-4">
-            <Range name="Zoom at the start" value={dezoomConfig(q).start_zoom} min={1.5} max={20} step={0.5} shown={`${dezoomConfig(q).start_zoom}×`}
-              onChange={(v) => set({ start_zoom: v, end_zoom: Math.min(dezoomConfig(q).end_zoom, v) })} />
-            <Range name="Zoom at the end" value={dezoomConfig(q).end_zoom} min={1} max={dezoomConfig(q).start_zoom} step={0.5} shown={`${dezoomConfig(q).end_zoom}×`}
+            <Range name="Zoom at the start" value={d.start_zoom} min={1.5} max={20} step={0.5} shown={`${d.start_zoom}×`}
+              onChange={(v) => set({ start_zoom: v, end_zoom: Math.min(d.end_zoom, v) })} />
+            <Range name="Zoom at the end" value={d.end_zoom} min={1} max={d.start_zoom} step={0.5} shown={`${d.end_zoom}×`}
               onChange={(v) => set({ end_zoom: v })} />
           </div>
         </>
       ) : (
-        (() => {
-          const c = blockyConfig(q);
-          const total = c.grid * c.grid;
-          const fullAt = Math.ceil(total / c.tiles_per_step) * c.step_ms;
-          return (
-            <>
-              <div className="grid sm:grid-cols-3 gap-4">
-                <Range name="Squares per side" value={c.grid} min={2} max={12} step={1} shown={`${c.grid}×${c.grid}`}
-                  onChange={(v) => set({ grid: v, tiles_per_step: Math.min(c.tiles_per_step, v * v) })} />
-                <Range name="Squares shown each time" value={c.tiles_per_step} min={1} max={Math.min(total, 20)} step={1} shown={String(c.tiles_per_step)}
-                  onChange={(v) => set({ tiles_per_step: v })} />
-                <Range name="Every" value={c.step_ms} min={500} max={10000} step={500} shown={`${c.step_ms / 1000}s`}
-                  onChange={(v) => set({ step_ms: v })} />
-              </div>
-              <p className={cn('text-xs', fullAt > question.time_limit_ms ? 'text-amber-400' : 'text-muted-foreground')}>
-                The whole picture is visible after {Math.round(fullAt / 1000)}s
-                {fullAt > question.time_limit_ms ? ` — longer than the ${Math.round(question.time_limit_ms / 1000)}s time limit, so part of it stays hidden.` : '.'}
-              </p>
-              <div className="grid sm:grid-cols-2 gap-4">
-                <Choice name="Order" value={c.order} onChange={(v) => set({ order: v })}
-                  options={[{ value: 'random', label: 'Random' }, { value: 'spiral', label: 'Centre outwards' }, { value: 'edges', label: 'Edges inwards' }]} />
-                <Choice name="Hidden squares" value={c.style} onChange={(v) => set({ style: v })}
-                  options={[{ value: 'pixel', label: 'Pixelated' }, { value: 'blur', label: 'Blurred' }]} />
-              </div>
-            </>
-          );
-        })()
+        <BlockySettings question={question} set={set} />
       )}
 
       {question.image_url && <Preview question={question} />}

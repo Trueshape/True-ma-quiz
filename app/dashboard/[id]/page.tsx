@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Trash2, GripVertical, Image as ImageIcon, Save, Check, X, Info, Sliders, Type, List, ArrowUp, ArrowDown, ArrowRight as ArrowRightIcon, Play, ZoomOut, Grid3x3, TextCursorInput } from 'lucide-react';
 import { YouTubeEmbed, parseYouTubeId } from '@/components/youtube-embed';
-import { supabase, type Quiz, type Question, type QuestionType, getGuestSession } from '@/lib/supabase';
+import { supabase, type Quiz, type Question, type QuestionType, decayStartMs, getGuestSession } from '@/lib/supabase';
 import { saveQuiz } from '@/lib/game-api';
 import { TagBox } from '@/components/tag-box';
 import { MAX_TAGS, countTags, normalizeTag, type TagCount } from '@/lib/tags';
@@ -46,6 +46,7 @@ type QuestionDraft = {
   points_value: number;
   info_image_position: 'top' | 'bottom' | 'left' | 'right';
   reveal_config: RevealConfig;
+  points_decay_start_ms: number | null;
 };
 
 const TF_OPTIONS = ['True', 'False'];
@@ -147,6 +148,7 @@ export default function QuizEditorPage() {
         points_value: x.points_value ?? 1000,
         info_image_position: (x.info_image_position as 'top' | 'bottom' | 'left' | 'right') ?? 'top',
         reveal_config: x.reveal_config ?? {},
+        points_decay_start_ms: x.points_decay_start_ms ?? null,
       }))
     );
     setLoading(false);
@@ -189,6 +191,7 @@ export default function QuizEditorPage() {
       points_value: 1000,
       info_image_position: 'top',
       reveal_config: defaultRevealConfig(type),
+      points_decay_start_ms: null,
     };
     setQuestions((q) => [...q, newQ]);
   };
@@ -230,18 +233,18 @@ export default function QuizEditorPage() {
           setSaving(false);
           return false;
         }
-        const ALLOWED_EXT = /\.(jpg|jpeg|webp|png|heic|heif)(\?|$)/i;
+        const ALLOWED_EXT = /\.(jpg|jpeg|webp|png|gif|avif|bmp|svg|heic|heif)(\?|$)/i;
         for (let i = 0; i < q.options.length; i++) {
           const hasText = q.options[i].trim().length > 0;
           const imgUrl = q.reorder_item_images[i]?.trim() ?? '';
           const hasValidImg = imgUrl.length > 0 && ALLOWED_EXT.test(imgUrl);
           if (!hasText && !hasValidImg) {
-            toast({ title: `Reorder item ${i + 1} needs text or a valid image URL (jpg/jpeg/webp/png/heic/heif)`, variant: 'destructive' });
+            toast({ title: `Reorder item ${i + 1} needs text or a valid image URL (jpg, png, webp, gif, avif, bmp, svg, heic)`, variant: 'destructive' });
             setSaving(false);
             return false;
           }
           if (imgUrl.length > 0 && !ALLOWED_EXT.test(imgUrl)) {
-            toast({ title: `Image URL for item ${i + 1} must end in jpg, jpeg, webp, png, heic, or heif`, variant: 'destructive' });
+            toast({ title: `Image URL for item ${i + 1} must end in jpg, png, webp, gif, avif, bmp, svg or heic`, variant: 'destructive' });
             setSaving(false);
             return false;
           }
@@ -313,6 +316,7 @@ export default function QuizEditorPage() {
       points_value: q.points_value,
       info_image_position: q.info_image_position,
       reveal_config: isNewType(q.type) ? q.reveal_config : null,
+      points_decay_start_ms: q.type === 'info' ? null : q.points_decay_start_ms,
     }));
     const pendingTag = normalizeTag(tagText);
     const finalTags = pendingTag && !tags.includes(pendingTag) && tags.length < MAX_TAGS ? [...tags, pendingTag] : tags;
@@ -781,10 +785,10 @@ function QuestionCard({
                 </Button>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">Set the items below in the CORRECT order. Players will see them shuffled. Each item can be either text or an image URL (jpg/jpeg/webp/png/heic/heif) — not both.</p>
+            <p className="text-xs text-muted-foreground">Set the items below in the CORRECT order. Players will see them shuffled. Each item can be either text or an image URL (jpg, png, webp, gif, avif, bmp, svg, heic) — not both.</p>
             {question.options.map((opt, i) => {
               const imgUrl = question.reorder_item_images[i] ?? '';
-              const ALLOWED_EXT = /\.(jpg|jpeg|webp|png|heic|heif)(\?|$)/i;
+              const ALLOWED_EXT = /\.(jpg|jpeg|webp|png|gif|avif|bmp|svg|heic|heif)(\?|$)/i;
               const isImage = imgUrl.length > 0;
               const imgValid = imgUrl.length === 0 || ALLOWED_EXT.test(imgUrl);
               const value = isImage ? imgUrl : opt;
@@ -816,7 +820,7 @@ function QuestionCard({
                   )}
                 </div>
                 {!imgValid && (
-                  <p className="pl-8 text-xs text-destructive">Only jpg, jpeg, webp, png, heic, heif allowed</p>
+                  <p className="pl-8 text-xs text-destructive">Only jpg, png, webp, gif, avif, bmp, svg, heic allowed</p>
                 )}
                 {isImage && imgValid && (
                   <div className="pl-8">
@@ -906,7 +910,7 @@ function QuestionCard({
           </div>
         )}
 
-        {!isInfo && !isOpen && (
+        {!isInfo && (
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center justify-between">
@@ -930,7 +934,7 @@ function QuestionCard({
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Points {isSlider ? <span className="text-sky-400">(proximity + speed)</span> : isReorder ? <span className="text-violet-400">(% correct + speed)</span> : isRevealType(question.type) ? <span className="text-pink-400">(less as the picture appears)</span> : question.type === 'blanks' ? <span className="text-pink-400">(% of blanks + speed)</span> : <span className="text-muted-foreground/60">(by speed)</span>}
+                Points {isSlider ? <span className="text-sky-400">(closer = more)</span> : isReorder ? <span className="text-violet-400">(% in the right place)</span> : isRevealType(question.type) ? <span className="text-pink-400">(less as the picture appears)</span> : question.type === 'blanks' ? <span className="text-pink-400">(% of right blanks)</span> : <span className="text-muted-foreground/60">(right answer)</span>}
               </label>
               <Input
                 type="number"
@@ -942,9 +946,38 @@ function QuestionCard({
                 className="h-9"
               />
             </div>
+            <PointsDecayField question={question} onChange={onChange} />
           </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** When points start going down: full points before, then down to 0 at the time limit. */
+function PointsDecayField({ question, onChange }: { question: QuestionDraft; onChange: (patch: Partial<QuestionDraft>) => void }) {
+  const limit = question.time_limit_ms;
+  const start = Math.min(limit, decayStartMs(question) ?? limit);
+  const never = start >= limit;
+  const after = isRevealType(question.type) ? 'then fewer as more of the picture shows' : `then down to 0 at ${Math.round(limit / 1000)}s`;
+  return (
+    <div className="col-span-2">
+      <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center justify-between gap-3">
+        <span>Full points for the first</span>
+        <span className="font-bold text-foreground tabular-nums text-right">
+          {never ? 'whole time — speed does not matter' : `${Math.round(start / 1000)}s, ${after}`}
+        </span>
+      </label>
+      <input
+        type="range"
+        aria-label="Full points for the first seconds"
+        min={0}
+        max={limit}
+        step={1000}
+        value={start}
+        onChange={(e) => onChange({ points_decay_start_ms: parseInt(e.target.value) })}
+        className="w-full accent-primary"
+      />
+    </div>
   );
 }

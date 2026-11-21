@@ -14,6 +14,7 @@ export type ParsedQuestion = {
   slider_answer: number;
   image_url: string | null;
   reveal_config: RevealConfig | null;
+  points_decay_start_ms: number | null;
 };
 
 export type ParsedQuiz = {
@@ -41,6 +42,7 @@ export type ParseResult =
  * - Wrong answer text
  * Time: 30             (optional, seconds)
  * Points: 1000        (optional)
+ * Full: 5             (optional: full points for the first 5 seconds, then fewer)
  *
  * For slider questions:
  * Q: What is the temperature?
@@ -73,16 +75,18 @@ export type ParseResult =
  * Q: Which painting is this?
  * T: blocky
  * Image: https://example.com/monalisa.jpg
- * Grid: 6              (optional: squares per side, 2-12)
- * Reveal: 2 every 3    (optional: 2 squares every 3 seconds)
+ * Tiles: 36            (optional: tiles in total, 4-144; they are square)
+ * Reveal: 2 every 3    (optional: 2 tiles every 3 seconds)
  * Order: spiral        (optional: random, spiral, edges)
  * Style: blur          (optional: pixel, blur)
+ * Blur: 4              (optional: blur strength, 1-5)
  * A: Mona Lisa
  *
  * For fill the blanks (1 to 5 blanks, other accepted answers after |):
  * Q: The capital of {{France}} is {{Paris|Parigi}}
  * T: blanks
  * Hint: first          (optional: none, length, first)
+ * Letters: 5          (optional: one more letter every 5 seconds)
  *
  * For info (no answers):
  * Q: Here is some interesting info
@@ -166,6 +170,7 @@ export function parseQuizText(input: string): ParseResult {
     let hasCorrect = false;
     let image_url: string | null = null;
     let reveal: RevealConfig = {};
+    let decay: number | null = null;
 
     while (i < lines.length) {
       const raw = lines[i];
@@ -200,7 +205,7 @@ export function parseQuizText(input: string): ParseResult {
         continue;
       }
 
-      const setting = /^(Image|Zoom|Focus|Grid|Reveal|Order|Style|Hint):\s*(.*)$/i.exec(l);
+      const setting = /^(Image|Zoom|Focus|Grid|Tiles|Reveal|Order|Style|Blur|Hint|Letters|Full):\s*(.*)$/i.exec(l);
       if (setting) {
         const key = setting[1].toLowerCase();
         const value = setting[2].trim();
@@ -208,7 +213,11 @@ export function parseQuizText(input: string): ParseResult {
         if (key === 'image') image_url = value || null;
         else if (key === 'zoom' && nums.length >= 1) reveal = { ...reveal, start_zoom: nums[0], end_zoom: nums[1] ?? 1 };
         else if (key === 'focus' && nums.length === 2) reveal = { ...reveal, focus_x: nums[0] / 100, focus_y: nums[1] / 100 };
-        else if (key === 'grid' && nums.length === 1) reveal = { ...reveal, grid: nums[0] };
+        else if (key === 'grid' && nums.length === 1) reveal = { ...reveal, tiles: nums[0] * nums[0] };
+        else if (key === 'tiles' && nums.length === 1) reveal = { ...reveal, tiles: nums[0] };
+        else if (key === 'blur' && nums.length === 1) reveal = { ...reveal, blur: nums[0] };
+        else if (key === 'letters' && nums.length === 1) reveal = { ...reveal, letter_every_ms: nums[0] * 1000 };
+        else if (key === 'full' && nums.length === 1) decay = nums[0] * 1000;
         else if (key === 'reveal' && nums.length === 2) reveal = { ...reveal, tiles_per_step: nums[0], step_ms: nums[1] * 1000 };
         else if (key === 'order' && ['random', 'spiral', 'edges'].includes(value.toLowerCase())) reveal = { ...reveal, order: value.toLowerCase() as RevealConfig['order'] };
         else if (key === 'style' && ['pixel', 'blur'].includes(value.toLowerCase())) reveal = { ...reveal, style: value.toLowerCase() as RevealConfig['style'] };
@@ -331,6 +340,7 @@ export function parseQuizText(input: string): ParseResult {
       slider_answer,
       image_url: isRevealType(type) ? image_url : null,
       reveal_config: isNewType(type) ? reveal : null,
+      points_decay_start_ms: type === 'info' ? null : decay,
     });
   }
 

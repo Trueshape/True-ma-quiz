@@ -8,7 +8,7 @@ vi.mock('@/lib/supabase', async () => {
   const real = await vi.importActual<Record<string, unknown>>('@/lib/supabase');
   return { ...real, supabase: {}, getGuestSession: () => null };
 });
-vi.mock('@/lib/image-upload', () => ({ uploadQuestionImage: vi.fn() }));
+vi.mock('@/lib/image-upload', () => ({ uploadQuestionImage: vi.fn(), QUESTION_IMAGE_ACCEPT: 'image/jpeg', QUESTION_IMAGE_MAX_MB: 1 }));
 
 import { HostNewTypeView, NewTypeQuestionView, NewTypeResult } from '@/components/reveal-question';
 import { RevealSettings, type RevealDraft } from '@/components/reveal-editor';
@@ -55,6 +55,16 @@ describe('player screen', () => {
     expect(onSubmit).toHaveBeenCalledWith({ openText: 'colosseo' });
   });
 
+  it('fill the blanks: more letters show as time passes', () => {
+    render(
+      <NewTypeQuestionView
+        question={question({ type: 'blanks', prompt: 'Capitale: {{Parigi}}', reveal_config: { hint: 'none', letter_every_ms: 5000 } })}
+        questionNumber={1} totalQuestions={1} timeLeft={10000} hasAnswered={false} onSubmit={vi.fn()}
+      />
+    );
+    expect((screen.getByLabelText('Blank 1') as HTMLInputElement).placeholder).toBe('P a _ _ _ _');
+  });
+
   it('cannot submit an empty answer, and is locked after answering', () => {
     render(
       <NewTypeQuestionView question={question({ type: 'blocky', prompt: '?' })} questionNumber={1} totalQuestions={1} timeLeft={1000} hasAnswered onSubmit={vi.fn()} />
@@ -91,7 +101,7 @@ function Editor({ initial }: { initial: RevealDraft }) {
   );
 }
 const draft = (over: Partial<RevealDraft>): RevealDraft => ({
-  type: 'dezoom', prompt: '', image_url: '', open_answers: [''], reveal_config: {}, time_limit_ms: 30000, points_value: 1000, ...over,
+  type: 'dezoom', prompt: '', image_url: '', open_answers: [''], reveal_config: {}, time_limit_ms: 30000, points_value: 1000, points_decay_start_ms: null, ...over,
 });
 const config = () => JSON.parse(screen.getByTestId('config').textContent!);
 
@@ -109,15 +119,34 @@ describe('editor settings', () => {
     render(<Editor initial={draft({ type: 'blanks', prompt: '{{a}}' })} />);
     await user.click(screen.getByRole('radio', { name: /first letter/i }));
     expect(config()).toEqual({ hint: 'first' });
+    expect((screen.getByLabelText('One more letter every') as HTMLInputElement).value).toBe('0');
   });
 
   it('blocky: shows when the whole picture is visible and warns when it is after the time limit', async () => {
     const user = userEvent.setup();
-    render(<Editor initial={draft({ type: 'blocky', image_url: 'https://x.test/a.jpg', reveal_config: { grid: 4, tiles_per_step: 2, step_ms: 2000 } })} />);
-    expect(screen.getByText(/visible after 16s\./)).toBeTruthy();
+    render(<Editor initial={draft({ type: 'blocky', image_url: 'https://x.test/a.jpg', reveal_config: { tiles: 16, cols: 4, rows: 4, tiles_per_step: 2, step_ms: 2000 } })} />);
+    expect(screen.getByText('4 × 4 = 16 square tiles. The whole picture is visible after 16s.')).toBeTruthy();
+    expect(screen.queryByLabelText('Blur strength')).toBeNull();
     await user.click(screen.getByRole('radio', { name: 'Centre outwards' }));
     await user.click(screen.getByRole('radio', { name: 'Blurred' }));
     expect(config()).toMatchObject({ order: 'spiral', style: 'blur' });
+    expect((screen.getByLabelText('Blur strength') as HTMLInputElement).value).toBe('3');
+  });
+
+  it('dezoom: the zoom point follows a drag and the arrow keys', async () => {
+    const user = userEvent.setup();
+    render(<Editor initial={draft({ image_url: 'https://x.test/a.jpg', reveal_config: { focus_x: 0.5, focus_y: 0.5 } })} />);
+    const picker = screen.getByRole('slider', { name: 'Zoom point' });
+    picker.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100, x: 0, y: 0, toJSON: () => ({}) });
+    await user.pointer([
+      { keys: '[MouseLeft>]', target: picker, coords: { clientX: 20, clientY: 10 } },
+      { target: picker, coords: { clientX: 150, clientY: 80 } },
+      { keys: '[/MouseLeft]', target: picker },
+    ]);
+    expect(config()).toMatchObject({ focus_x: 0.75, focus_y: 0.8 });
+    picker.focus();
+    await user.keyboard('{ArrowLeft}{ArrowUp}');
+    expect(config()).toMatchObject({ focus_x: 0.73, focus_y: 0.78 });
   });
 
   it('dezoom: the end zoom never goes above the start zoom', () => {

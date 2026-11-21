@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { PGlite } from '@electric-sql/pglite';
 import { asRole, createDb } from './helpers/db';
-import { computeBlanksPoints, computeRevealPoints, parseBlanks } from '@/lib/reveal';
-import type { Question } from '@/lib/supabase';
+import { blockyConfig, blockyTotal, computeBlanksPoints, computeRevealPoints, parseBlanks, revealFactor } from '@/lib/reveal';
+import { decayStartMs, timeFactor, type Question } from '@/lib/supabase';
 
 type Json = Record<string, any>;
 
@@ -166,5 +166,53 @@ describe('saving blanks questions', () => {
     const prompt = 'A {{ uno | one }} b {{due}}{{tre|3}} fine';
     const res = await db.query<{ accepted: string[] }>(`select accepted from g_blank_answers($1) order by idx`, [prompt]);
     expect(res.rows.map((r) => r.accepted)).toEqual(parseBlanks(prompt).answers);
+  });
+});
+
+describe('points going down and square tiles: the server matches the TypeScript', () => {
+  beforeAll(async () => {
+    db = await createDb();
+  }, 120000);
+
+  const configs: Record<string, unknown>[] = [
+    {},
+    { grid: 5, tiles_per_step: 2, step_ms: 1500 },
+    { tiles: 40 },
+    { tiles: 36, cols: 4, rows: 9, tiles_per_step: 5, step_ms: 3000 },
+    { tiles: 999, cols: 30, rows: 2, tiles_per_step: 0, step_ms: 99999 },
+  ];
+
+  it.each(configs.map((c) => [JSON.stringify(c), c]))('tiles counted for %s', async (_name, c) => {
+    const res = await db.query<{ n: number }>(`select g_blocky_total($1::jsonb) as n`, [JSON.stringify(c)]);
+    expect(res.rows[0].n).toBe(blockyTotal(blockyConfig({ reveal_config: c as never })));
+  });
+
+  const cases: [string, Record<string, unknown>, number | null, number][] = [];
+  for (const type of ['dezoom', 'blocky']) {
+    for (const c of configs) {
+      for (const start of [null, 0, 4000, 10000, 20000, 30000]) {
+        for (const taken of [0, 3000, 4500, 9000, 15000, 19999, 22000]) cases.push([type, c, start, taken]);
+      }
+    }
+  }
+
+  it(`reveal points in ${cases.length} cases`, async () => {
+    for (const [type, c, start, taken] of cases) {
+      const question = { type, reveal_config: c, time_limit_ms: 20000, points_decay_start_ms: start } as unknown as Question;
+      const res = await db.query<{ f: string }>(
+        `select g_reveal_factor($1, $2::jsonb, 20000, $3, g_decay_start($1, $4)) as f`,
+        [type, JSON.stringify(c), taken, start]
+      );
+      expect(Number(res.rows[0].f), `${type} ${JSON.stringify(c)} start=${start} taken=${taken}`).toBeCloseTo(revealFactor(question, taken), 6);
+    }
+  });
+
+  it.each([
+    ['mc', null, 2000], ['mc', null, 11500], ['open', 10000, 15000], ['blanks', 20000, 19000], ['mc', 25000, 22000],
+    ['slider', null, 15000], ['slider', 10000, 15000], ['reorder', 0, 5000],
+  ] as [string, number | null, number][])('time factor for %s with start %s at %i ms', async (type, start, taken) => {
+    const res = await db.query<{ f: string }>(`select g_tf($1, 20000, g_decay_start($2, $3)) as f`, [taken, type, start]);
+    const s = decayStartMs({ type, points_decay_start_ms: start } as Question);
+    expect(Number(res.rows[0].f)).toBeCloseTo(s == null ? 1 : timeFactor(taken, 20000, s), 6);
   });
 });

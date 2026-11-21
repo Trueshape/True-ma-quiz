@@ -104,6 +104,8 @@ export type Question = {
   info_image_position: 'top' | 'bottom' | 'left' | 'right' | null;
   /** Settings of the dezoom, blocky and blanks types (see lib/reveal.ts). */
   reveal_config: RevealConfig | null;
+  /** When points start going down (ms). null = the type's usual rule, see decayStartMs. */
+  points_decay_start_ms: number | null;
   created_at: string;
 };
 
@@ -148,38 +150,52 @@ export type Answer = {
 };
 
 // Time factor: returns 1.0 for the first `gracePeriodMs`, then decays linearly to 0 at `timeLimitMs`.
+// A grace period as long as the time limit (or longer) means points never go down.
 export function timeFactor(timeTakenMs: number, timeLimitMs: number, gracePeriodMs: number): number {
-  if (timeTakenMs <= gracePeriodMs) return 1.0;
+  if (timeTakenMs <= gracePeriodMs || gracePeriodMs >= timeLimitMs) return 1.0;
   const afterGrace = Math.min(timeTakenMs, timeLimitMs) - gracePeriodMs;
   const window = Math.max(1, timeLimitMs - gracePeriodMs);
   return Math.max(0, 1.0 - (afterGrace / window));
 }
 
-// MC / TF scoring: 0 for wrong; maxPoints × timeFactor for correct.
-// Full points if answered within the first 3 seconds, then decays linearly to 0 at time limit.
-export function computePoints(isCorrect: boolean, timeTakenMs: number, timeLimitMs: number, maxPoints: number = 1000): number {
-  if (!isCorrect) return 0;
-  return Math.round(maxPoints * timeFactor(timeTakenMs, timeLimitMs, 3000));
+/**
+ * When points start going down, in ms from the start of the question. The creator can set it
+ * for each question; otherwise each type keeps its usual rule: 3 s of full points, from the
+ * start for de-zoom and blocky, and never for slider and reorder. null = never.
+ */
+export function decayStartMs(q: Pick<Question, 'type' | 'points_decay_start_ms'>): number | null {
+  if (q.points_decay_start_ms != null) return q.points_decay_start_ms;
+  if (q.type === 'slider' || q.type === 'reorder') return null;
+  if (q.type === 'dezoom' || q.type === 'blocky') return 0;
+  return 3000;
 }
 
-// Slider scoring: proximity fraction × timeFactor.
-// proximityFraction = 1 − (|guess − answer| / range), so exact = 1.0, worst edge = 0.
-// Scoring is based solely on proximity — no time factor.
-export function computeSliderPoints(guess: number, answer: number, min: number, max: number, maxPoints: number = 1000, _timeTakenMs: number = 0, _timeLimitMs: number = 30000): number {
+// MC / TF scoring: 0 for wrong; maxPoints × timeFactor for correct.
+// Full points if answered within the first `decayStart` ms, then decays linearly to 0 at time limit.
+export function computePoints(isCorrect: boolean, timeTakenMs: number, timeLimitMs: number, maxPoints: number = 1000, decayStart: number = 3000): number {
+  if (!isCorrect) return 0;
+  return Math.round(maxPoints * timeFactor(timeTakenMs, timeLimitMs, decayStart));
+}
+
+// Slider scoring: proximityFraction = 1 − (|guess − answer| / range), so exact = 1.0, worst edge = 0.
+// Time only counts when the creator set when points start going down (decayStart not null).
+export function computeSliderPoints(guess: number, answer: number, min: number, max: number, maxPoints: number = 1000, timeTakenMs: number = 0, timeLimitMs: number = 30000, decayStart: number | null = null): number {
   const range = max - min;
   const proximityFraction = range <= 0
     ? (guess === answer ? 1 : 0)
     : Math.max(0, 1 - Math.abs(guess - answer) / range);
-  return Math.round(maxPoints * proximityFraction);
+  const tf = decayStart == null ? 1 : timeFactor(timeTakenMs, timeLimitMs, decayStart);
+  return Math.round(maxPoints * proximityFraction * tf);
 }
 
-// Reorder scoring: based solely on the fraction of items in the correct position.
-// No time factor.
-export function computeReorderPoints(userOrder: number[], correctOrder: number[], maxPoints: number = 1000, _timeTakenMs: number = 0, _timeLimitMs: number = 30000): number {
+// Reorder scoring: the fraction of items in the correct position.
+// Time only counts when the creator set when points start going down (decayStart not null).
+export function computeReorderPoints(userOrder: number[], correctOrder: number[], maxPoints: number = 1000, timeTakenMs: number = 0, timeLimitMs: number = 30000, decayStart: number | null = null): number {
   if (userOrder.length === 0 || correctOrder.length === 0) return 0;
   const correctCount = userOrder.filter((val, i) => val === correctOrder[i]).length;
   const correctFraction = correctCount / correctOrder.length;
-  return Math.round(maxPoints * correctFraction);
+  const tf = decayStart == null ? 1 : timeFactor(timeTakenMs, timeLimitMs, decayStart);
+  return Math.round(maxPoints * correctFraction * tf);
 }
 
 // Normalize a string for fuzzy comparison: lowercase, trim, remove accents, collapse spaces.
@@ -225,7 +241,8 @@ export function computeOpenPoints(
   acceptedAnswers: string[],
   maxPoints: number = 1000,
   timeTakenMs: number = 0,
-  timeLimitMs: number = 30000
+  timeLimitMs: number = 30000,
+  decayStart: number = 3000
 ): { points: number; isCorrect: boolean; similarity: number } {
   if (!userAnswer.trim() || acceptedAnswers.length === 0) {
     return { points: 0, isCorrect: false, similarity: 0 };
@@ -241,7 +258,7 @@ export function computeOpenPoints(
     const threshold = normalizedAns.length < 6 ? 1 : 0.8;
     if (sim >= threshold) isCorrect = true;
   }
-  const tf = timeFactor(timeTakenMs, timeLimitMs, 3000);
+  const tf = timeFactor(timeTakenMs, timeLimitMs, decayStart);
   const points = isCorrect ? Math.round(maxPoints * tf) : 0;
   return { points, isCorrect, similarity: bestSim };
 }
