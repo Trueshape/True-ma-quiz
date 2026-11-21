@@ -178,7 +178,7 @@ export default function DashboardPage() {
       prompt: q.prompt,
       options: q.type === 'tf' ? ['True', 'False'] : q.type === 'mc' ? q.options : q.type === 'reorder' ? q.options : [],
       correct_index: q.type === 'tf' ? q.correct_index : q.type === 'mc' ? q.correct_index : 0,
-      image_url: null,
+      image_url: q.image_url,
       video_url: null,
       video_start_ms: 0,
       video_hidden: false,
@@ -193,9 +193,10 @@ export default function DashboardPage() {
       slider_answer: q.type === 'slider' ? q.slider_answer : null,
       reorder_correct_order: q.type === 'reorder' ? q.options.map((_, idx) => idx) : null,
       reorder_item_images: q.type === 'reorder' ? q.options.map(() => '') : null,
-      open_answers: q.type === 'open' ? q.open_answers : null,
+      open_answers: q.open_answers.length ? q.open_answers : null,
       points_value: q.points_value,
       info_image_position: 'top',
+      reveal_config: q.reveal_config,
     }));
 
     const { error: saveErr } = await saveQuiz(

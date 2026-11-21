@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { RevealConfig } from '@/lib/reveal';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
@@ -73,7 +74,7 @@ export function removeGuestQuizId(quizId: string): void {
   setGuestSession(session);
 }
 
-export type QuestionType = 'mc' | 'tf' | 'info' | 'slider' | 'reorder' | 'open';
+export type QuestionType = 'mc' | 'tf' | 'info' | 'slider' | 'reorder' | 'open' | 'dezoom' | 'blocky' | 'blanks';
 
 export type Question = {
   id: string;
@@ -101,6 +102,8 @@ export type Question = {
   open_answers: string[] | null;
   points_value: number;
   info_image_position: 'top' | 'bottom' | 'left' | 'right' | null;
+  /** Settings of the dezoom, blocky and blanks types (see lib/reveal.ts). */
+  reveal_config: RevealConfig | null;
   created_at: string;
 };
 
@@ -137,6 +140,7 @@ export type Answer = {
   slider_value: number | null;
   reorder_order: number[] | null;
   open_text: string | null;
+  blank_texts: string[] | null;
   is_correct: boolean;
   time_taken_ms: number;
   points: number;
@@ -144,7 +148,7 @@ export type Answer = {
 };
 
 // Time factor: returns 1.0 for the first `gracePeriodMs`, then decays linearly to 0 at `timeLimitMs`.
-function timeFactor(timeTakenMs: number, timeLimitMs: number, gracePeriodMs: number): number {
+export function timeFactor(timeTakenMs: number, timeLimitMs: number, gracePeriodMs: number): number {
   if (timeTakenMs <= gracePeriodMs) return 1.0;
   const afterGrace = Math.min(timeTakenMs, timeLimitMs) - gracePeriodMs;
   const window = Math.max(1, timeLimitMs - gracePeriodMs);

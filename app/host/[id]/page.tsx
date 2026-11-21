@@ -12,6 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useAudio } from '@/components/audio-provider';
 import { QuestionMedia } from '@/components/question-media';
 import { cn } from '@/lib/utils';
+import { isNewType } from '@/lib/reveal';
+import { HostNewTypeView, NewTypeResult } from '@/components/reveal-question';
 
 export default function HostPage() {
   const params = useParams();
@@ -289,7 +291,7 @@ export default function HostPage() {
           />
         )}
 
-        {session.status === 'question' && currentQ && currentQ.type !== 'info' && currentQ.type !== 'slider' && currentQ.type !== 'reorder' && currentQ.type !== 'open' && (
+        {session.status === 'question' && currentQ && currentQ.type !== 'info' && currentQ.type !== 'slider' && currentQ.type !== 'reorder' && currentQ.type !== 'open' && !isNewType(currentQ.type) && (
           <HostQuestionView
             question={currentQ}
             questionNumber={scorableNumber}
@@ -315,6 +317,18 @@ export default function HostPage() {
 
         {session.status === 'question' && currentQ && currentQ.type === 'open' && (
           <HostOpenView
+            question={currentQ}
+            questionNumber={scorableNumber}
+            totalQuestions={scorableTotal}
+            timeLeft={timeLeft}
+            answeredCount={answeredCount}
+            totalPlayers={players.length}
+            onSkip={toLeaderboard}
+          />
+        )}
+
+        {session.status === 'question' && currentQ && isNewType(currentQ.type) && (
+          <HostNewTypeView
             question={currentQ}
             questionNumber={scorableNumber}
             totalQuestions={scorableTotal}
@@ -649,8 +663,10 @@ function HostLeaderboardView({
 
       <Card className="mb-6">
         <CardContent className="p-6">
-          <p className="text-lg font-medium text-center mb-4">{question.prompt}</p>
-          {isSlider ? (
+          {question.type !== 'blanks' && <p className="text-lg font-medium text-center mb-4">{question.prompt}</p>}
+          {isNewType(question.type) ? (
+            <NewTypeResult question={question} />
+          ) : isSlider ? (
             <div className="text-center">
               <p className="text-sm text-muted-foreground mb-1">The correct answer is</p>
               <p className="text-4xl font-bold text-emerald-400">{question.slider_answer}</p>

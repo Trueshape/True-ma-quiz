@@ -12,6 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useAudio } from '@/components/audio-provider';
 import { QuestionMedia } from '@/components/question-media';
 import { cn } from '@/lib/utils';
+import { computeBlanksPoints, computeRevealPoints, isNewType } from '@/lib/reveal';
+import { NewTypeQuestionView, NewTypeResult, newTypeAnswerRight, type NewTypeAnswer } from '@/components/reveal-question';
 
 const OPTION_COLORS = [
   'border-rose-500 bg-rose-500/15 hover:bg-rose-500/25 text-rose-50',
@@ -48,6 +50,7 @@ export default function PracticePage() {
   const [sliderValue, setSliderValue] = useState<number | null>(null);
   const [reorderOrder, setReorderOrder] = useState<number[]>([]);
   const [openText, setOpenText] = useState('');
+  const [blankTexts, setBlankTexts] = useState<string[]>([]);
   const [score, setScore] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -232,6 +235,28 @@ export default function PracticePage() {
     setPhase('reveal');
   };
 
+  const handleNewTypeAnswer = (a: NewTypeAnswer) => {
+    if (phase !== 'question' || answeredRef.current) return;
+    const currentQ = questions[currentIndex];
+    if (!currentQ || !isNewType(currentQ.type)) return;
+
+    answeredRef.current = true;
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+
+    const timeTaken = Date.now() - questionStartRef.current;
+    const { points, isCorrect } = 'openText' in a
+      ? computeRevealPoints(currentQ, a.openText, timeTaken)
+      : computeBlanksPoints(currentQ, a.blankTexts, timeTaken);
+    if ('openText' in a) setOpenText(a.openText);
+    else setBlankTexts(a.blankTexts);
+
+    setLastPoints(points);
+    setScore((s) => s + points);
+    if (isCorrect) setCorrectCount((c) => c + 1);
+    setResults((r) => [...r, { questionIndex: currentIndex, correct: isCorrect, points, chosenIndex: null, sliderValue: null }]);
+    setPhase('reveal');
+  };
+
   const showLeaderboard = () => {
     setPhase('leaderboard');
   };
@@ -247,6 +272,7 @@ export default function PracticePage() {
     setSliderValue(null);
     setReorderOrder([]);
     setOpenText('');
+    setBlankTexts([]);
     setLastPoints(0);
     answeredRef.current = false;
     setPhase('question');
@@ -258,6 +284,7 @@ export default function PracticePage() {
     setSliderValue(null);
     setReorderOrder([]);
     setOpenText('');
+    setBlankTexts([]);
     setScore(0);
     setCorrectCount(0);
     setLastPoints(0);
@@ -309,7 +336,7 @@ export default function PracticePage() {
           />
         )}
 
-        {phase === 'question' && currentQ && currentQ.type !== 'info' && currentQ.type !== 'slider' && currentQ.type !== 'reorder' && currentQ.type !== 'open' && (
+        {phase === 'question' && currentQ && currentQ.type !== 'info' && currentQ.type !== 'slider' && currentQ.type !== 'reorder' && currentQ.type !== 'open' && !isNewType(currentQ.type) && (
           <PracticeQuestionView
             question={currentQ}
             questionNumber={scorableNumber}
@@ -339,6 +366,18 @@ export default function PracticePage() {
           />
         )}
 
+        {phase === 'question' && currentQ && isNewType(currentQ.type) && (
+          <NewTypeQuestionView
+            key={currentQ.id}
+            question={currentQ}
+            questionNumber={scorableNumber}
+            totalQuestions={scorableTotal}
+            timeLeft={timeLeft}
+            hasAnswered={false}
+            onSubmit={handleNewTypeAnswer}
+          />
+        )}
+
         {phase === 'question' && currentQ && currentQ.type === 'slider' && (
           <PracticeSliderView
             question={currentQ}
@@ -358,6 +397,7 @@ export default function PracticePage() {
             sliderValue={sliderValue}
             reorderOrder={reorderOrder}
             openText={openText}
+            blankTexts={blankTexts}
             lastPoints={lastPoints}
             isLast={currentIndex + 1 >= questions.length}
             onNext={showLeaderboard}
@@ -688,21 +728,26 @@ function PracticeOpenView({
 }
 
 function PracticeRevealView({
-  question, questionNumber, totalQuestions, chosenIndex, sliderValue, reorderOrder, openText, lastPoints, isLast, onNext,
+  question, questionNumber, totalQuestions, chosenIndex, sliderValue, reorderOrder, openText, blankTexts, lastPoints, isLast, onNext,
 }: {
-  question: Question; questionNumber: number; totalQuestions: number; chosenIndex: number | null; sliderValue: number | null; reorderOrder: number[]; openText: string; lastPoints: number; isLast: boolean; onNext: () => void;
+  question: Question; questionNumber: number; totalQuestions: number; chosenIndex: number | null; sliderValue: number | null; reorderOrder: number[]; openText: string; blankTexts: string[]; lastPoints: number; isLast: boolean; onNext: () => void;
 }) {
+  const isNew = isNewType(question.type);
   const isSlider = question.type === 'slider';
   const isReorder = question.type === 'reorder';
   const isOpen = question.type === 'open';
-  const wasCorrect = isSlider
+  const wasCorrect = isNew
+    ? newTypeAnswerRight(question, openText, blankTexts)
+    : isSlider
     ? sliderValue !== null && sliderValue === question.slider_answer
     : isReorder
     ? (question.reorder_correct_order ?? []).every((v, i) => reorderOrder[i] === v)
     : isOpen
     ? (question.open_answers ?? []).some((a) => a.toLowerCase().trim() === openText.toLowerCase().trim())
     : chosenIndex !== null && chosenIndex === question.correct_index;
-  const timedOut = !isSlider && !isReorder && !isOpen && chosenIndex === null;
+  const timedOut = isNew
+    ? !openText && blankTexts.length === 0
+    : !isSlider && !isReorder && !isOpen && chosenIndex === null;
 
   return (
     <div>
@@ -712,9 +757,11 @@ function PracticeRevealView({
 
       <Card className="mb-4">
         <CardContent className="p-5">
-          <QuestionMedia imageUrl={question.image_url} videoUrl={question.video_url} audioUrl={question.audio_url} audioVolume={question.audio_volume} audioStartMs={question.audio_start_ms} className="mb-4" imgClassName="max-h-48" />
-          <p className="text-base font-medium text-center mb-3">{question.prompt}</p>
-          {isSlider ? (
+          {!isNew && <QuestionMedia imageUrl={question.image_url} videoUrl={question.video_url} audioUrl={question.audio_url} audioVolume={question.audio_volume} audioStartMs={question.audio_start_ms} className="mb-4" imgClassName="max-h-48" />}
+          {question.type !== 'blanks' && <p className="text-base font-medium text-center mb-3">{question.prompt}</p>}
+          {isNew ? (
+            <NewTypeResult question={question} openText={openText} blankTexts={blankTexts} />
+          ) : isSlider ? (
             <div className="text-center space-y-2">
               <div>
                 <p className="text-sm text-muted-foreground">Correct answer</p>

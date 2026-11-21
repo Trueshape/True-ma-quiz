@@ -13,6 +13,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useAudio } from '@/components/audio-provider';
 import { QuestionMedia } from '@/components/question-media';
 import { cn } from '@/lib/utils';
+import { isNewType } from '@/lib/reveal';
+import { NewTypeQuestionView, NewTypeResult, type NewTypeAnswer } from '@/components/reveal-question';
 
 const OPTION_COLORS = [
   'border-rose-500 bg-rose-500/15 hover:bg-rose-500/25 text-rose-50',
@@ -39,6 +41,7 @@ export default function PlayPage() {
   const [sliderValue, setSliderValue] = useState<number | null>(null);
   const [reorderOrder, setReorderOrder] = useState<number[]>([]);
   const [openText, setOpenText] = useState('');
+  const [blankTexts, setBlankTexts] = useState<string[]>([]);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const [lastPoints, setLastPoints] = useState<number | null>(null);
@@ -147,6 +150,7 @@ export default function PlayPage() {
             setSliderValue(null);
             setReorderOrder([]);
             setOpenText('');
+            setBlankTexts([]);
             setHasAnswered(false);
             answeredRef.current = false;
             setLastPoints(null);
@@ -274,6 +278,16 @@ export default function PlayPage() {
     await sendAnswer({ openText: text });
   };
 
+  const submitNewTypeAnswer = async (a: NewTypeAnswer) => {
+    if (!session || !player || hasAnswered) return;
+    answeredRef.current = true;
+    if ('openText' in a) setOpenText(a.openText);
+    else setBlankTexts(a.blankTexts);
+    setHasAnswered(true);
+    stopTimer();
+    await sendAnswer(a);
+  };
+
   if (loading || !session || !player) {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground"><Loader2 className="w-6 h-6 animate-spin" /></div>;
   }
@@ -313,7 +327,7 @@ export default function PlayPage() {
           <PlayerInfoView question={currentQ} questionNumber={scorableNumber} totalQuestions={scorableTotal} />
         )}
 
-        {session.status === 'question' && currentQ && currentQ.type !== 'info' && currentQ.type !== 'slider' && currentQ.type !== 'reorder' && currentQ.type !== 'open' && (
+        {session.status === 'question' && currentQ && currentQ.type !== 'info' && currentQ.type !== 'slider' && currentQ.type !== 'reorder' && currentQ.type !== 'open' && !isNewType(currentQ.type) && (
           <PlayerQuestionView
             question={currentQ}
             questionNumber={scorableNumber}
@@ -347,6 +361,18 @@ export default function PlayPage() {
           />
         )}
 
+        {session.status === 'question' && currentQ && isNewType(currentQ.type) && (
+          <NewTypeQuestionView
+            key={currentQ.id}
+            question={currentQ}
+            questionNumber={scorableNumber}
+            totalQuestions={scorableTotal}
+            timeLeft={timeLeft}
+            hasAnswered={hasAnswered}
+            onSubmit={submitNewTypeAnswer}
+          />
+        )}
+
         {session.status === 'question' && currentQ && currentQ.type === 'slider' && (
           <PlayerSliderView
             question={currentQ}
@@ -372,6 +398,7 @@ export default function PlayPage() {
             sliderValue={sliderValue}
             reorderOrder={reorderOrder}
             openText={openText}
+            blankTexts={blankTexts}
             isFinished={session.status === 'finished'}
           />
         )}
@@ -740,9 +767,9 @@ function PlayerOpenView({
 }
 
 function PlayerLeaderboardView({
-  question, questionNumber, totalQuestions, players, currentPlayerId, lastPoints, lastCorrect, chosenIndex, sliderValue, reorderOrder, openText, isFinished,
+  question, questionNumber, totalQuestions, players, currentPlayerId, lastPoints, lastCorrect, chosenIndex, sliderValue, reorderOrder, openText, blankTexts, isFinished,
 }: {
-  question: Question; questionNumber: number; totalQuestions: number; players: Player[]; currentPlayerId: string; lastPoints: number | null; lastCorrect: boolean | null; chosenIndex: number | null; sliderValue: number | null; reorderOrder: number[]; openText: string; isFinished: boolean;
+  question: Question; questionNumber: number; totalQuestions: number; players: Player[]; currentPlayerId: string; lastPoints: number | null; lastCorrect: boolean | null; chosenIndex: number | null; sliderValue: number | null; reorderOrder: number[]; openText: string; blankTexts: string[]; isFinished: boolean;
 }) {
   const myRank = players.findIndex((p) => p.id === currentPlayerId) + 1;
   const isInfo = question.type === 'info';
@@ -760,8 +787,10 @@ function PlayerLeaderboardView({
 
           <Card className="mb-4">
             <CardContent className="p-5">
-              <p className="text-base font-medium text-center mb-3">{question.prompt}</p>
-              {isSlider ? (
+              {question.type !== 'blanks' && <p className="text-base font-medium text-center mb-3">{question.prompt}</p>}
+              {isNewType(question.type) ? (
+                <NewTypeResult question={question} openText={openText} blankTexts={blankTexts} />
+              ) : isSlider ? (
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground mb-1">Correct answer</p>
                   <p className="text-3xl font-bold text-emerald-400">{question.slider_answer}</p>

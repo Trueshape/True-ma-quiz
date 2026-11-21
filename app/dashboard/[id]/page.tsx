@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Plus, Trash2, GripVertical, Image as ImageIcon, Save, Check, X, Info, Sliders, Type, List, ArrowUp, ArrowDown, ArrowRight as ArrowRightIcon, Play } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, GripVertical, Image as ImageIcon, Save, Check, X, Info, Sliders, Type, List, ArrowUp, ArrowDown, ArrowRight as ArrowRightIcon, Play, ZoomOut, Grid3x3, TextCursorInput } from 'lucide-react';
 import { YouTubeEmbed, parseYouTubeId } from '@/components/youtube-embed';
 import { supabase, type Quiz, type Question, type QuestionType, getGuestSession } from '@/lib/supabase';
 import { saveQuiz } from '@/lib/game-api';
@@ -17,6 +17,8 @@ import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { MAX_BLANKS, defaultRevealConfig, isNewType, isRevealType, parseBlanks, type RevealConfig } from '@/lib/reveal';
+import { RevealSettings } from '@/components/reveal-editor';
 
 type QuestionDraft = {
   id?: string;
@@ -43,6 +45,7 @@ type QuestionDraft = {
   open_answers: string[];
   points_value: number;
   info_image_position: 'top' | 'bottom' | 'left' | 'right';
+  reveal_config: RevealConfig;
 };
 
 const TF_OPTIONS = ['True', 'False'];
@@ -143,6 +146,7 @@ export default function QuizEditorPage() {
         open_answers: x.open_answers ?? [],
         points_value: x.points_value ?? 1000,
         info_image_position: (x.info_image_position as 'top' | 'bottom' | 'left' | 'right') ?? 'top',
+        reveal_config: x.reveal_config ?? {},
       }))
     );
     setLoading(false);
@@ -181,9 +185,10 @@ export default function QuizEditorPage() {
       slider_answer: 50,
       reorder_correct_order: type === 'reorder' ? [0, 1, 2] : [],
       reorder_item_images: type === 'reorder' ? ['', '', ''] : [],
-      open_answers: type === 'open' ? [''] : [],
+      open_answers: type === 'open' || isRevealType(type) ? [''] : [],
       points_value: 1000,
       info_image_position: 'top',
+      reveal_config: defaultRevealConfig(type),
     };
     setQuestions((q) => [...q, newQ]);
   };
@@ -249,6 +254,26 @@ export default function QuizEditorPage() {
           return false;
         }
       }
+      if (isRevealType(q.type)) {
+        if (!q.image_url.trim()) {
+          toast({ title: 'De-zoom and Blocky questions need a picture', variant: 'destructive' });
+          setSaving(false);
+          return false;
+        }
+        if (q.open_answers.filter((a) => a.trim()).length === 0) {
+          toast({ title: 'Add at least one accepted answer', variant: 'destructive' });
+          setSaving(false);
+          return false;
+        }
+      }
+      if (q.type === 'blanks') {
+        const gaps = parseBlanks(q.prompt).answers;
+        if (gaps.length === 0 || gaps.length > MAX_BLANKS || gaps.some((g) => g.length === 0)) {
+          toast({ title: `Fill the blanks needs 1 to ${MAX_BLANKS} blanks written as {{answer}}`, variant: 'destructive' });
+          setSaving(false);
+          return false;
+        }
+      }
       if (q.type === 'slider') {
         if (q.slider_min >= q.slider_max) {
           toast({ title: 'Slider min must be less than max', variant: 'destructive' });
@@ -284,9 +309,10 @@ export default function QuizEditorPage() {
       slider_answer: q.type === 'slider' ? q.slider_answer : null,
       reorder_correct_order: q.type === 'reorder' ? q.reorder_correct_order : null,
       reorder_item_images: q.type === 'reorder' ? q.reorder_item_images.map((u) => u.trim() || '') : null,
-      open_answers: q.type === 'open' ? q.open_answers.map((a) => a.trim()).filter(Boolean) : null,
+      open_answers: q.type === 'open' || isRevealType(q.type) ? q.open_answers.map((a) => a.trim()).filter(Boolean) : null,
       points_value: q.points_value,
       info_image_position: q.info_image_position,
+      reveal_config: isNewType(q.type) ? q.reveal_config : null,
     }));
     const pendingTag = normalizeTag(tagText);
     const finalTags = pendingTag && !tags.includes(pendingTag) && tags.length < MAX_TAGS ? [...tags, pendingTag] : tags;
@@ -358,6 +384,9 @@ export default function QuizEditorPage() {
               { type: 'open' as QuestionType, icon: <Type className="w-4 h-4" />, label: 'Open answer' },
               { type: 'slider' as QuestionType, icon: <Sliders className="w-4 h-4" />, label: 'Slider' },
               { type: 'reorder' as QuestionType, icon: <List className="w-4 h-4" />, label: 'Reorder' },
+              { type: 'dezoom' as QuestionType, icon: <ZoomOut className="w-4 h-4" />, label: 'De-zoom' },
+              { type: 'blocky' as QuestionType, icon: <Grid3x3 className="w-4 h-4" />, label: 'Blocky' },
+              { type: 'blanks' as QuestionType, icon: <TextCursorInput className="w-4 h-4" />, label: 'Fill the blanks' },
             ] as { type: QuestionType; icon: React.ReactNode; label: string }[]).map(({ type, icon, label }) => (
               <button
                 key={type}
@@ -437,6 +466,9 @@ export default function QuizEditorPage() {
                 { type: 'open' as QuestionType, icon: <Type className="w-5 h-5" />, label: 'Open answer' },
                 { type: 'slider' as QuestionType, icon: <Sliders className="w-5 h-5" />, label: 'Slider' },
                 { type: 'reorder' as QuestionType, icon: <List className="w-5 h-5" />, label: 'Reorder' },
+                { type: 'dezoom' as QuestionType, icon: <ZoomOut className="w-5 h-5" />, label: 'De-zoom' },
+                { type: 'blocky' as QuestionType, icon: <Grid3x3 className="w-5 h-5" />, label: 'Blocky' },
+                { type: 'blanks' as QuestionType, icon: <TextCursorInput className="w-5 h-5" />, label: 'Fill the blanks' },
               ] as { type: QuestionType; icon: React.ReactNode; label: string }[]).map(({ type, icon, label }) => (
                 <Button key={type} variant="outline" onClick={() => addQuestion(type)} className="gap-2 h-14 text-base">
                   {icon} {label}
@@ -478,10 +510,12 @@ function QuestionCard({
   const isSlider = question.type === 'slider';
   const isReorder = question.type === 'reorder';
   const isOpen = question.type === 'open';
+  const isNew = isNewType(question.type);
   const options = isTF ? TF_OPTIONS : question.options;
 
-  const typeLabel = isTF ? 'True / False' : isMC ? 'Multiple choice' : isSlider ? 'Slider' : isReorder ? 'Reorder' : isOpen ? 'Open answer' : 'Info page';
-  const typeColor = isTF ? 'bg-accent/15 text-accent' : isMC ? 'bg-primary/15 text-primary' : isSlider ? 'bg-sky-500/15 text-sky-400' : isReorder ? 'bg-violet-500/15 text-violet-400' : isOpen ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400';
+  const typeLabel = isTF ? 'True / False' : isMC ? 'Multiple choice' : isSlider ? 'Slider' : isReorder ? 'Reorder' : isOpen ? 'Open answer'
+    : question.type === 'dezoom' ? 'De-zoom' : question.type === 'blocky' ? 'Blocky' : question.type === 'blanks' ? 'Fill the blanks' : 'Info page';
+  const typeColor = isTF ? 'bg-accent/15 text-accent' : isMC ? 'bg-primary/15 text-primary' : isSlider ? 'bg-sky-500/15 text-sky-400' : isReorder ? 'bg-violet-500/15 text-violet-400' : isOpen ? 'bg-emerald-500/15 text-emerald-400' : isNew ? 'bg-pink-500/15 text-pink-400' : 'bg-amber-500/15 text-amber-400';
 
   const setMCOption = (i: number, val: string) => {
     const next = [...question.options];
@@ -529,12 +563,14 @@ function QuestionCard({
         <Input
           value={question.prompt}
           onChange={(e) => onChange({ prompt: e.target.value })}
-          placeholder={isInfo ? 'Info text (e.g. "Part 2: History")' : 'Type your question...'}
+          placeholder={isInfo ? 'Info text (e.g. "Part 2: History")' : question.type === 'blanks' ? 'La capitale della {{Francia}} è {{Parigi|Paris}}' : isNew ? 'e.g. What is this monument?' : 'Type your question...'}
           className="text-base"
         />
 
+        {isNew && <RevealSettings question={question} onChange={onChange} />}
+
         {/* Media field */}
-        <div>
+        {!isNew && <div>
           <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
             <ImageIcon className="w-3.5 h-3.5" /> Media URL — image, audio (mp3/wav/ogg/flac/opus), YouTube (optional)
           </label>
@@ -617,7 +653,7 @@ function QuestionCard({
               <img src={question.image_url} alt="question" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
             </div>
           )}
-        </div>
+        </div>}
 
         {(isMC || isTF) && (
           <div>
@@ -894,7 +930,7 @@ function QuestionCard({
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Points {isSlider ? <span className="text-sky-400">(proximity + speed)</span> : isReorder ? <span className="text-violet-400">(% correct + speed)</span> : <span className="text-muted-foreground/60">(by speed)</span>}
+                Points {isSlider ? <span className="text-sky-400">(proximity + speed)</span> : isReorder ? <span className="text-violet-400">(% correct + speed)</span> : isRevealType(question.type) ? <span className="text-pink-400">(less as the picture appears)</span> : question.type === 'blanks' ? <span className="text-pink-400">(% of blanks + speed)</span> : <span className="text-muted-foreground/60">(by speed)</span>}
               </label>
               <Input
                 type="number"

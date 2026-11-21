@@ -89,6 +89,7 @@ export type AnswerPayload = {
   sliderValue?: number;
   reorderOrder?: number[];
   openText?: string;
+  blankTexts?: string[];
 };
 
 export type AnswerResult = { points: number; is_correct: boolean; score: number };
@@ -108,6 +109,7 @@ export async function submitAnswer(
     p_slider_value: answer.sliderValue ?? null,
     p_reorder_order: answer.reorderOrder ?? null,
     p_open_text: answer.openText ?? null,
+    p_blank_texts: answer.blankTexts ?? null,
   });
   if (error || !data) return { result: null, error };
   return { result: data as AnswerResult, error: null };

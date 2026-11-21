@@ -1,4 +1,5 @@
 import type { QuestionType } from '@/lib/supabase';
+import { MAX_BLANKS, defaultRevealConfig, isNewType, isRevealType, parseBlanks, type RevealConfig } from '@/lib/reveal';
 
 export type ParsedQuestion = {
   type: QuestionType;
@@ -11,6 +12,8 @@ export type ParsedQuestion = {
   slider_min: number;
   slider_max: number;
   slider_answer: number;
+  image_url: string | null;
+  reveal_config: RevealConfig | null;
 };
 
 export type ParsedQuiz = {
@@ -57,6 +60,29 @@ export type ParseResult =
  * T: tf
  * * True
  * - False
+ *
+ * For de-zoom (guess a picture that slowly zooms out):
+ * Q: Which monument is this?
+ * T: dezoom
+ * Image: https://example.com/colosseum.jpg
+ * Zoom: 10 -> 1        (optional: zoom at the start and at the end)
+ * Focus: 30, 60        (optional: zoom point in % from the left and from the top)
+ * A: Colosseum
+ *
+ * For blocky (a picture made of squares that appear a few at a time):
+ * Q: Which painting is this?
+ * T: blocky
+ * Image: https://example.com/monalisa.jpg
+ * Grid: 6              (optional: squares per side, 2-12)
+ * Reveal: 2 every 3    (optional: 2 squares every 3 seconds)
+ * Order: spiral        (optional: random, spiral, edges)
+ * Style: blur          (optional: pixel, blur)
+ * A: Mona Lisa
+ *
+ * For fill the blanks (1 to 5 blanks, other accepted answers after |):
+ * Q: The capital of {{France}} is {{Paris|Parigi}}
+ * T: blanks
+ * Hint: first          (optional: none, length, first)
  *
  * For info (no answers):
  * Q: Here is some interesting info
@@ -138,6 +164,8 @@ export function parseQuizText(input: string): ParseResult {
     let slider_answer = 50;
 
     let hasCorrect = false;
+    let image_url: string | null = null;
+    let reveal: RevealConfig = {};
 
     while (i < lines.length) {
       const raw = lines[i];
@@ -148,10 +176,11 @@ export function parseQuizText(input: string): ParseResult {
 
       if (/^T(?:ype)?:\s*/i.test(l)) {
         const t = l.replace(/^T(?:ype)?:\s*/i, '').trim().toLowerCase();
-        if (t === 'mc' || t === 'tf' || t === 'info' || t === 'slider' || t === 'open' || t === 'reorder') {
-          type = t;
+        if (t === 'mc' || t === 'tf' || t === 'info' || t === 'slider' || t === 'open' || t === 'reorder' || isNewType(t)) {
+          type = t as QuestionType;
+          reveal = { ...defaultRevealConfig(type), ...reveal };
         } else {
-          return { ok: false, error: `Unknown question type "${t}". Use: mc, tf, info, slider, open, or reorder.` };
+          return { ok: false, error: `Unknown question type "${t}". Use: mc, tf, info, slider, open, reorder, dezoom, blocky or blanks.` };
         }
         i++;
         continue;
@@ -167,6 +196,24 @@ export function parseQuizText(input: string): ParseResult {
       if (/^Points:\s*/i.test(l)) {
         const pts = parseInt(l.replace(/^Points:\s*/i, '').trim());
         if (!isNaN(pts) && pts >= 0) points_value = pts;
+        i++;
+        continue;
+      }
+
+      const setting = /^(Image|Zoom|Focus|Grid|Reveal|Order|Style|Hint):\s*(.*)$/i.exec(l);
+      if (setting) {
+        const key = setting[1].toLowerCase();
+        const value = setting[2].trim();
+        const nums = (value.match(/\d+(?:\.\d+)?/g) ?? []).map(Number);
+        if (key === 'image') image_url = value || null;
+        else if (key === 'zoom' && nums.length >= 1) reveal = { ...reveal, start_zoom: nums[0], end_zoom: nums[1] ?? 1 };
+        else if (key === 'focus' && nums.length === 2) reveal = { ...reveal, focus_x: nums[0] / 100, focus_y: nums[1] / 100 };
+        else if (key === 'grid' && nums.length === 1) reveal = { ...reveal, grid: nums[0] };
+        else if (key === 'reveal' && nums.length === 2) reveal = { ...reveal, tiles_per_step: nums[0], step_ms: nums[1] * 1000 };
+        else if (key === 'order' && ['random', 'spiral', 'edges'].includes(value.toLowerCase())) reveal = { ...reveal, order: value.toLowerCase() as RevealConfig['order'] };
+        else if (key === 'style' && ['pixel', 'blur'].includes(value.toLowerCase())) reveal = { ...reveal, style: value.toLowerCase() as RevealConfig['style'] };
+        else if (key === 'hint' && ['none', 'length', 'first'].includes(value.toLowerCase())) reveal = { ...reveal, hint: value.toLowerCase() as RevealConfig['hint'] };
+        else return { ok: false, error: `Question "${prompt}": "${l}" is not a valid setting.` };
         i++;
         continue;
       }
@@ -250,6 +297,18 @@ export function parseQuizText(input: string): ParseResult {
       if (open_answers.length === 0) {
         return { ok: false, error: `Open question "${prompt}" needs at least one accepted answer (use "A:" or "Answer:" lines).` };
       }
+    } else if (isRevealType(type)) {
+      if (!image_url) {
+        return { ok: false, error: `Question "${prompt}" needs a picture (use an "Image:" line).` };
+      }
+      if (open_answers.length === 0) {
+        return { ok: false, error: `Question "${prompt}" needs at least one accepted answer (use "A:" lines).` };
+      }
+    } else if (type === 'blanks') {
+      const gaps = parseBlanks(prompt).answers;
+      if (gaps.length === 0 || gaps.length > MAX_BLANKS || gaps.some((g) => g.length === 0)) {
+        return { ok: false, error: `Fill the blanks "${prompt}" needs 1 to ${MAX_BLANKS} blanks written as {{answer}}.` };
+      }
     } else if (type === 'mc') {
       if (options.length < 2) {
         return { ok: false, error: `Multiple-choice question "${prompt}" needs at least 2 options.` };
@@ -266,10 +325,12 @@ export function parseQuizText(input: string): ParseResult {
       correct_index: type === 'tf' ? correct_index : type === 'mc' ? correct_index : 0,
       time_limit_ms,
       points_value,
-      open_answers: type === 'open' ? open_answers : [],
+      open_answers: type === 'open' || isRevealType(type) ? open_answers : [],
       slider_min,
       slider_max,
       slider_answer,
+      image_url: isRevealType(type) ? image_url : null,
+      reveal_config: isNewType(type) ? reveal : null,
     });
   }
 
@@ -309,6 +370,17 @@ A: Stockholm
 A: Oslo
 A: Copenhagen
 A: Helsinki
+
+Q: Which monument is this?
+T: dezoom
+Image: https://example.com/colosseum.jpg
+Zoom: 10 -> 1
+A: Colosseum
+A: Colosseo
+
+Q: The capital of {{Australia}} is {{Canberra}}
+T: blanks
+Hint: first
 
 Q: Did you know? Canberra was chosen as Australia's capital as a compromise between Sydney and Melbourne.
 T: info`;
