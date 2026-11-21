@@ -22,6 +22,7 @@ export type Quiz = {
   is_public?: boolean;
   is_guest?: boolean;
   owner_id?: string | null;
+  tags?: string[];
 };
 
 // Guest session stored in sessionStorage — cleared when tab closes

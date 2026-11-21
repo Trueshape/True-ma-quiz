@@ -156,7 +156,7 @@ export async function createQuiz(
   return { quiz: result.quiz, error: null };
 }
 
-export type QuizMeta = { title: string; description: string; cover_image_url: string };
+export type QuizMeta = { title: string; description: string; cover_image_url: string; tags?: string[] };
 
 export async function saveQuiz(
   quizId: string,

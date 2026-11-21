@@ -92,7 +92,7 @@ export default function DashboardPage() {
       }
       const { data, error } = await supabase
         .from('quizzes')
-        .select('id, title, description, cover_image_url, created_by, created_at, is_public, is_guest')
+        .select('id, title, description, cover_image_url, created_by, created_at, is_public, is_guest, tags')
         .in('id', guest.quizIds)
         .order('created_at', { ascending: false });
       if (error) {
@@ -118,7 +118,7 @@ export default function DashboardPage() {
     // Authenticated user: load their own quizzes
     const { data, error } = await supabase
       .from('quizzes')
-      .select('id, title, description, cover_image_url, created_by, created_at, is_public, owner_id')
+      .select('id, title, description, cover_image_url, created_by, created_at, is_public, owner_id, tags')
       .eq('owner_id', currentUser?.id ?? '')
       .order('created_at', { ascending: false });
     if (error) {
@@ -348,6 +348,16 @@ export default function DashboardPage() {
                       )}
                       {quiz.description && (
                         <CardDescription className="truncate mt-1">{quiz.description}</CardDescription>
+                      )}
+                      {(quiz.tags ?? []).length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {(quiz.tags ?? []).slice(0, 3).map((tag) => (
+                            <span key={tag} className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[11px] font-medium">#{tag}</span>
+                          ))}
+                          {(quiz.tags ?? []).length > 3 && (
+                            <span className="px-1 py-0.5 text-[11px] text-muted-foreground">+{(quiz.tags ?? []).length - 3}</span>
+                          )}
+                        </div>
                       )}
                     </div>
                     <DropdownMenu>

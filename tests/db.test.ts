@@ -314,3 +314,65 @@ describe('a live game', () => {
     expect(await asAnon(() => failure(call('join_session_by_code', [code, 'Late'])))).toContain('game_started');
   });
 });
+
+describe('quiz tags', () => {
+  let quizId: string;
+  let token: string;
+  const save = (tags: unknown) =>
+    asAnon(() => call('save_quiz', [quizId, token, { title: 'Tagged', tags }, [mcQuestion('q')]]));
+  const tagsOf = async () => (await db.query<{ tags: string[] }>(`select tags from quizzes where id=$1`, [quizId])).rows[0].tags;
+
+  beforeAll(async () => {
+    const created = await asAnon(() => call('create_quiz', ['Tagged', null, 'G']));
+    quizId = created.quiz.id;
+    token = created.token;
+  });
+
+  it('a new quiz has no tags', async () => {
+    expect(await tagsOf()).toEqual([]);
+  });
+
+  it('tags are lower-cased, trimmed, hyphenated and de-duplicated in order', async () => {
+    await save(['  Geografia ', '#Storia Romana', 'geografia', '', '   ', 'x'.repeat(40)]);
+    expect(await tagsOf()).toEqual(['geografia', 'storia-romana', 'x'.repeat(30)]);
+  });
+
+  it('keeps at most 10 tags, the first ones', async () => {
+    await save(Array.from({ length: 15 }, (_, i) => `tag${i}`));
+    expect(await tagsOf()).toEqual(Array.from({ length: 10 }, (_, i) => `tag${i}`));
+  });
+
+  it('a save without a tags field leaves the tags as they are', async () => {
+    await save(['uno', 'due']);
+    await asAnon(() => call('save_quiz', [quizId, token, { title: 'Renamed' }, [mcQuestion('q')]]));
+    expect(await tagsOf()).toEqual(['uno', 'due']);
+  });
+
+  it('an empty list clears the tags', async () => {
+    await save([]);
+    expect(await tagsOf()).toEqual([]);
+  });
+
+  it('tags that are not a list are refused', async () => {
+    await save(['intatto']);
+    expect(await asAnon(() => failure(save('geografia')))).toContain('invalid_meta');
+    expect(await asAnon(() => failure(save(Array.from({ length: 31 }, (_, i) => `t${i}`))))).toContain('invalid_meta');
+    expect(await tagsOf()).toEqual(['intatto']);
+  });
+
+  it('other guests cannot change them', async () => {
+    const err = await asAnon(() => failure(call('save_quiz', [quizId, NIL, { title: 'x', tags: ['hack'] }, []])));
+    expect(err).toContain('not_allowed');
+    expect(await tagsOf()).toEqual(['intatto']);
+  });
+
+  it('public quizzes can be found by tag by anyone', async () => {
+    const created = await asUser(ALICE, () => call('create_quiz', ['Public tagged', null, null]));
+    await asUser(ALICE, () => call('save_quiz', [created.quiz.id, null, { title: 'Public tagged', tags: ['Scienza', 'spazio'] }, [mcQuestion('q')]]));
+    await asUser(ALICE, () => call('set_quiz_public', [created.quiz.id, true]));
+    const found = await asAnon(() => db.query<{ id: string }>(`select id from quizzes where tags @> ARRAY['spazio']::text[] and is_public`));
+    expect(found.rows.map((r) => r.id)).toContain(created.quiz.id);
+    const none = await asAnon(() => db.query(`select id from quizzes where tags @> ARRAY['inesistente']::text[]`));
+    expect(none.rows).toHaveLength(0);
+  });
+});

@@ -7,6 +7,8 @@ import { ArrowLeft, Plus, Trash2, GripVertical, Image as ImageIcon, Save, Check,
 import { YouTubeEmbed, parseYouTubeId } from '@/components/youtube-embed';
 import { supabase, type Quiz, type Question, type QuestionType, getGuestSession } from '@/lib/supabase';
 import { saveQuiz } from '@/lib/game-api';
+import { TagBox } from '@/components/tag-box';
+import { MAX_TAGS, countTags, normalizeTag, type TagCount } from '@/lib/tags';
 import { HeaderBack, HeaderEnd } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -79,6 +81,9 @@ export default function QuizEditorPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [coverImage, setCoverImage] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagText, setTagText] = useState('');
+  const [knownTags, setKnownTags] = useState<TagCount[]>([]);
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
@@ -111,6 +116,7 @@ export default function QuizEditorPage() {
     setTitle(q.title);
     setDescription(q.description || '');
     setCoverImage(q.cover_image_url || '');
+    setTags(q.tags ?? []);
     setQuestions(
       ((qs || []) as Question[]).map((x) => ({
         id: x.id,
@@ -145,6 +151,13 @@ export default function QuizEditorPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    supabase
+      .from('quizzes')
+      .select('tags')
+      .then(({ data }) => setKnownTags(countTags((data ?? []).map((r) => r.tags as string[] | null))));
+  }, []);
 
   const addQuestion = (type: QuestionType) => {
     const newQ: QuestionDraft = {
@@ -275,9 +288,11 @@ export default function QuizEditorPage() {
       points_value: q.points_value,
       info_image_position: q.info_image_position,
     }));
+    const pendingTag = normalizeTag(tagText);
+    const finalTags = pendingTag && !tags.includes(pendingTag) && tags.length < MAX_TAGS ? [...tags, pendingTag] : tags;
     const { error: saveErr } = await saveQuiz(
       quizId,
-      { title: title.trim(), description: description.trim(), cover_image_url: coverImage.trim() },
+      { title: title.trim(), description: description.trim(), cover_image_url: coverImage.trim(), tags: finalTags },
       rows
     );
     if (saveErr) {
@@ -285,6 +300,7 @@ export default function QuizEditorPage() {
       setSaving(false);
       return false;
     }
+    setTagText('');
     toast({ title: 'Quiz saved', description: `${questions.length} question${questions.length !== 1 ? 's' : ''}` });
     setSaving(false);
     await load();
@@ -368,6 +384,22 @@ export default function QuizEditorPage() {
                 <div>
                   <label className="text-sm font-medium mb-1.5 block">Description</label>
                   <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description" rows={2} />
+                </div>
+                <div>
+                  <label htmlFor="quiz-tags" className="text-sm font-medium mb-1.5 block">Tags</label>
+                  <TagBox
+                    id="quiz-tags"
+                    chips={tags}
+                    onChipsChange={setTags}
+                    text={tagText}
+                    onTextChange={setTagText}
+                    known={knownTags}
+                    allowNew
+                    suggestWhenEmpty
+                    maxChips={MAX_TAGS}
+                    placeholder="Add a tag, e.g. history"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1.5">Press Enter or comma to add one. Up to {MAX_TAGS} tags; people find public quizzes by them.</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium mb-1.5 block">Cover image URL (optional)</label>

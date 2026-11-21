@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Zap, Search, Globe, Users, Play, MonitorPlay, ArrowRight, BookOpen } from 'lucide-react';
 import { supabase, type Quiz, getGuestSession } from '@/lib/supabase';
 import { createSession } from '@/lib/game-api';
 import { HeaderEnd } from '@/components/header-controls';
+import { TagBox } from '@/components/tag-box';
+import { countTags } from '@/lib/tags';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 
@@ -20,12 +21,13 @@ export default function LibraryPage() {
   const [quizzes, setQuizzes] = useState<QuizWithCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('quizzes')
-      .select('id, title, description, cover_image_url, created_by, created_at, is_public')
+      .select('id, title, description, cover_image_url, created_by, created_at, is_public, tags')
       .eq('is_public', true)
       .eq('is_guest', false)
       .order('created_at', { ascending: false });
@@ -73,14 +75,24 @@ export default function LibraryPage() {
     router.push(`/host/${session.id}`);
   };
 
-  const filtered = search.trim()
-    ? quizzes.filter(
-        (q) =>
-          q.title.toLowerCase().includes(search.toLowerCase()) ||
-          (q.description ?? '').toLowerCase().includes(search.toLowerCase()) ||
-          (q.created_by ?? '').toLowerCase().includes(search.toLowerCase())
-      )
-    : quizzes;
+  const knownTags = useMemo(() => countTags(quizzes.map((q) => q.tags)), [quizzes]);
+
+  const needle = search.trim().toLowerCase().replace(/^#+/, '');
+  const hasFilters = needle !== '' || tagFilter.length > 0;
+  const filtered = quizzes.filter((q) => {
+    const tags = q.tags ?? [];
+    if (tagFilter.some((t) => !tags.includes(t))) return false;
+    if (!needle) return true;
+    return (
+      q.title.toLowerCase().includes(needle) ||
+      (q.description ?? '').toLowerCase().includes(needle) ||
+      (q.created_by ?? '').toLowerCase().includes(needle) ||
+      tags.some((t) => t.includes(needle.replace(/\s+/g, '-')))
+    );
+  });
+
+  const toggleTag = (tag: string) =>
+    setTagFilter((list) => (list.includes(tag) ? list.filter((t) => t !== tag) : [...list, tag]));
 
   const guest = typeof window !== 'undefined' ? getGuestSession() : null;
   const isGuest = !!guest;
@@ -108,13 +120,16 @@ export default function LibraryPage() {
           </div>
         </div>
 
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by title, description, or author..."
-            className="pl-10 h-11"
+        <div className="mb-6">
+          <TagBox
+            chips={tagFilter}
+            onChipsChange={setTagFilter}
+            text={search}
+            onTextChange={setSearch}
+            known={knownTags}
+            maxChips={10}
+            icon={<Search className="w-4 h-4" />}
+            placeholder="Search by title, author or #tag..."
           />
         </div>
 
@@ -131,14 +146,14 @@ export default function LibraryPage() {
                 <BookOpen className="w-7 h-7" />
               </div>
               <h3 className="text-lg font-semibold mb-1">
-                {search ? 'No results found' : 'No public quizzes yet'}
+                {hasFilters ? 'No results found' : 'No public quizzes yet'}
               </h3>
               <p className="text-muted-foreground text-sm mb-4">
-                {search
-                  ? 'Try a different search term.'
+                {hasFilters
+                  ? 'Try a different search term or remove a tag.'
                   : 'Be the first to share a quiz with the community! Go to your dashboard and set a quiz as public.'}
               </p>
-              {!search && (
+              {!hasFilters && (
                 <Link href="/dashboard">
                   <Button className="gap-2">
                     <ArrowRight className="w-4 h-4" /> Go to Dashboard
@@ -180,6 +195,27 @@ export default function LibraryPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="pt-0">
+                    {(quiz.tags ?? []).length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        {(quiz.tags ?? []).slice(0, 4).map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => toggleTag(tag)}
+                            aria-pressed={tagFilter.includes(tag)}
+                            title={`Show quizzes tagged ${tag}`}
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                              tagFilter.includes(tag) ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary hover:bg-primary/20'
+                            }`}
+                          >
+                            #{tag}
+                          </button>
+                        ))}
+                        {(quiz.tags ?? []).length > 4 && (
+                          <span className="px-1 py-0.5 text-[11px] text-muted-foreground">+{(quiz.tags ?? []).length - 4}</span>
+                        )}
+                      </div>
+                    )}
                     <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4">
                       <span className="flex items-center gap-1">
                         <Zap className="w-3.5 h-3.5" /> {quiz.question_count} questions

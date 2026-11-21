@@ -2,7 +2,12 @@ import { defineConfig } from 'vitest/config';
 import path from 'node:path';
 
 export default defineConfig({
-  resolve: { alias: { '@': path.resolve(__dirname) } },
+  resolve: {
+    alias: [
+      { find: '@', replacement: path.resolve(__dirname) },
+    ],
+  },
+  esbuild: { jsx: 'automatic' },
   test: {
     env: {
       NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co',
