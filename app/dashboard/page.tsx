@@ -7,6 +7,7 @@ import { Plus, Zap, Trophy, Users, MoreVertical, Play, ArrowRight, MonitorPlay, 
 import { supabase, type Quiz, getGuestSession, removeGuestQuizId } from '@/lib/supabase';
 import { createQuiz as createQuizRpc, createSession, deleteQuiz, saveQuiz, setQuizPublic } from '@/lib/game-api';
 import { HeaderEnd } from '@/components/header-controls';
+import { getMyProfile } from '@/lib/profile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -68,13 +69,19 @@ export default function DashboardPage() {
       setAuthLoading(false);
       return;
     }
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        const meta = data.session.user.user_metadata;
-        setCurrentUser({ id: data.session.user.id, nickname: meta?.nickname ?? 'User' });
-      } else {
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!data.session) {
         router.push('/');
+        setAuthLoading(false);
+        return;
       }
+      // An account without a username (first Google sign-in) picks one first.
+      const profile = await getMyProfile(data.session.user.id);
+      if (!profile) {
+        router.replace('/profile?welcome=1');
+        return;
+      }
+      setCurrentUser({ id: data.session.user.id, nickname: profile.nickname });
       setAuthLoading(false);
     });
   }, [router]);

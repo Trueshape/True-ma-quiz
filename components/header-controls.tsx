@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Home, LogOut } from 'lucide-react';
 import { supabase, getGuestSession, clearGuestSession } from '@/lib/supabase';
 import { deleteQuiz } from '@/lib/game-api';
+import { getMyProfile } from '@/lib/profile';
 import { Button } from '@/components/ui/button';
 import { VolumeControl } from '@/components/volume-control';
 import { ThemeSwitcher } from '@/components/theme-switcher';
@@ -27,7 +28,7 @@ export function HeaderBack({ href, label }: { href: string; label: string }) {
   );
 }
 
-type Account = { nickname: string; guest: boolean };
+type Account = { nickname: string; guest: boolean; avatarUrl?: string | null };
 
 function useAccount(enabled: boolean) {
   const [account, setAccount] = useState<Account | null>(null);
@@ -39,11 +40,22 @@ function useAccount(enabled: boolean) {
       setAccount({ nickname: guest.nickname, guest: true });
       return;
     }
-    const toAccount = (user: { user_metadata?: { nickname?: string } } | undefined): Account | null =>
-      user ? { nickname: user.user_metadata?.nickname ?? '', guest: false } : null;
-    supabase.auth.getSession().then(({ data }) => setAccount(toAccount(data.session?.user)));
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => setAccount(toAccount(session?.user)));
-    return () => sub.subscription.unsubscribe();
+    let alive = true;
+    // The profile (username and picture) wins over the name stored in the sign-in token.
+    const show = async (user: { id: string; user_metadata?: { nickname?: string } } | undefined) => {
+      if (!user) return setAccount(null);
+      setAccount({ nickname: user.user_metadata?.nickname ?? '', guest: false });
+      const profile = await getMyProfile(user.id);
+      if (alive && profile) setAccount({ nickname: profile.nickname, guest: false, avatarUrl: profile.avatar_url });
+    };
+    supabase.auth.getSession().then(({ data }) => show(data.session?.user));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      show(session?.user);
+    });
+    return () => {
+      alive = false;
+      sub.subscription.unsubscribe();
+    };
   }, [enabled]);
 
   const logout = async () => {
@@ -89,16 +101,21 @@ export function HeaderEnd({ account: withAccount = true, home = true, homeLabel 
       )}
       {account && (
         <Link
-          href="/dashboard"
-          title="My quizzes"
+          href={account.guest ? '/dashboard' : '/profile'}
+          title={account.guest ? 'My quizzes' : 'My profile'}
           className="flex items-center gap-2 h-10 pl-2 pr-3 ml-2 rounded-lg transition-colors hover:bg-accent"
         >
           <span
-            className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-semibold ${
+            className={`w-7 h-7 rounded-full overflow-hidden flex items-center justify-center text-sm font-semibold ${
               account.guest ? 'bg-amber-500 text-amber-950' : 'bg-primary text-primary-foreground'
             }`}
           >
-            {(account.nickname || '?').charAt(0).toUpperCase()}
+            {account.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={account.avatarUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              (account.nickname || '?').charAt(0).toUpperCase()
+            )}
           </span>
           <span className="text-sm font-medium">{account.nickname}</span>
           {account.guest && <span className="text-xs text-amber-500 hidden sm:inline">Guest</span>}

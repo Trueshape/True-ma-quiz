@@ -15,8 +15,15 @@ export async function createDb(options: { upTo?: string } = {}): Promise<PGlite>
       SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$
       SELECT coalesce(NULLIF(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
-    CREATE TABLE auth.users (id uuid primary key);
-    GRANT USAGE ON SCHEMA public, auth TO anon, authenticated;
+    CREATE TABLE auth.users (id uuid primary key, email text, raw_user_meta_data jsonb NOT NULL DEFAULT '{}');
+    CREATE SCHEMA storage;
+    CREATE TABLE storage.buckets (id text primary key, name text, public boolean DEFAULT false, file_size_limit bigint, allowed_mime_types text[]);
+    CREATE TABLE storage.objects (id uuid DEFAULT gen_random_uuid() primary key, bucket_id text, name text);
+    ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+    CREATE FUNCTION storage.foldername(name text) RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
+      SELECT string_to_array(regexp_replace(name, '/[^/]*$', ''), '/') $$;
+    GRANT USAGE ON SCHEMA public, auth, storage TO anon, authenticated;
+    GRANT ALL ON ALL TABLES IN SCHEMA storage TO anon, authenticated;
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
   `);
   const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();

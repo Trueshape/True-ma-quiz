@@ -21,6 +21,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { HeaderEnd } from '@/components/header-controls';
 import { useAudio } from '@/components/audio-provider';
 import { supabase, getGuestSession, setGuestSession } from '@/lib/supabase';
+import { nicknameAvailable } from '@/lib/profile';
 import { useToast } from '@/hooks/use-toast';
 
 function randomGuestNickname(): string {
@@ -92,6 +93,11 @@ export default function Home() {
       return;
     }
     setAuthBusy(true);
+    if (authMode === 'register' && !(await nicknameAvailable(nick))) {
+      setAuthBusy(false);
+      toast({ title: 'Username already taken', description: 'Choose a different one.', variant: 'destructive' });
+      return;
+    }
     const fakeEmail = `${nick.toLowerCase()}@truemaquiz.local`;
 
     if (authMode === 'register') {
