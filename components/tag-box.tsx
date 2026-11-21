@@ -91,6 +91,7 @@ export function TagBox({
       e.preventDefault();
       setActive((i) => Math.max(i - 1, -1));
     } else if (e.key === 'Enter') {
+      // Only arrow keys pick a suggestion: Enter adds the typed text as a tag.
       if (showList && active >= 0) {
         e.preventDefault();
         add(suggestions[active].tag);
@@ -167,7 +168,6 @@ export function TagBox({
                 aria-selected={i === active}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => add(s.tag)}
-                onMouseEnter={() => setActive(i)}
                 className={cn(
                   'w-full flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-left',
                   i === active ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60'

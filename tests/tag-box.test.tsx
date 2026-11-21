@@ -156,3 +156,24 @@ describe('TagBox with pasted or fast text', () => {
     expect(chipsText()).toBe('a,b,c');
   });
 });
+
+describe('TagBox Enter adds what is typed', () => {
+  it('pressing Enter adds the typed text as a tag even when a suggestion is under the mouse', async () => {
+    const user = userEvent.setup();
+    render(<Harness allowNew />);
+    const box = screen.getByRole('combobox');
+    await user.type(box, 'st');
+    await user.hover(screen.getAllByRole('option')[0]);
+    await user.keyboard('oria-antica{Enter}');
+    expect(chipsText()).toBe('storia-antica');
+  });
+
+  it('a suggestion is added only when picked with the arrow keys', async () => {
+    const user = userEvent.setup();
+    render(<Harness allowNew />);
+    const box = screen.getByRole('combobox');
+    await user.type(box, 'st');
+    await user.keyboard('{ArrowDown}{Enter}');
+    expect(chipsText()).toBe('storia');
+  });
+});
