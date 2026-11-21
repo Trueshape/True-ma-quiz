@@ -136,3 +136,23 @@ describe('TagBox as the editor field (new tags allowed)', () => {
     expect(chipsText()).toBe('finale');
   });
 });
+
+describe('TagBox with pasted or fast text', () => {
+  it('a pasted list with commas becomes several tags and the last part stays as text', async () => {
+    const user = userEvent.setup();
+    render(<Harness allowNew />);
+    const box = screen.getByRole('combobox') as HTMLInputElement;
+    await user.click(box);
+    await user.paste('Uno, due ,#Tre quattro,cin');
+    expect(chipsText()).toBe('uno,due,tre-quattro');
+    expect(box.value).toBe('cin');
+  });
+
+  it('commas past the maximum are ignored and duplicates are not added twice', async () => {
+    const user = userEvent.setup();
+    render(<Harness allowNew initial={['a']} />);
+    await user.click(screen.getByRole('combobox'));
+    await user.paste('a,b,c,d,');
+    expect(chipsText()).toBe('a,b,c');
+  });
+});

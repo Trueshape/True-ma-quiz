@@ -62,6 +62,26 @@ export function TagBox({
     onChipsChange([...chips, tag]);
   };
 
+  // A comma ends a tag. Handled on the inserted text, not on the key, so typing fast,
+  // pasting "one, two, three" and on-screen keyboards all work.
+  const onTextInput = (value: string) => {
+    if (allowNew && value.includes(',')) {
+      const parts = value.split(',');
+      const rest = parts.pop() ?? '';
+      const next = [...chips];
+      for (const part of parts) {
+        const tag = normalizeTag(part);
+        if (tag && !next.includes(tag) && next.length < maxChips) next.push(tag);
+      }
+      if (next.length !== chips.length) onChipsChange(next);
+      onTextChange(rest);
+    } else {
+      onTextChange(value);
+    }
+    setOpen(true);
+    setActive(-1);
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -78,9 +98,6 @@ export function TagBox({
         e.preventDefault();
         add(text);
       }
-    } else if (e.key === ',' && allowNew) {
-      e.preventDefault();
-      add(text);
     } else if (e.key === 'Backspace' && text === '' && chips.length > 0) {
       onChipsChange(chips.slice(0, -1));
     } else if (e.key === 'Escape') {
@@ -124,11 +141,7 @@ export function TagBox({
           aria-autocomplete="list"
           aria-activedescendant={showList && active >= 0 ? `${listId}-${active}` : undefined}
           value={text}
-          onChange={(e) => {
-            onTextChange(e.target.value);
-            setOpen(true);
-            setActive(-1);
-          }}
+          onChange={(e) => onTextInput(e.target.value)}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           onBlur={onBlur}
