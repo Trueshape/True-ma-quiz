@@ -106,6 +106,12 @@ export type Question = {
   reveal_config: RevealConfig | null;
   /** When points start going down (ms). null = the type's usual rule, see decayStartMs. */
   points_decay_start_ms: number | null;
+  /** Multiple choice: show the options in a different order in each game. */
+  shuffle_options: boolean;
+  /** Optional picture shown with the solution. */
+  solution_image_url: string | null;
+  /** Set only on this device after shuffling: original index of each option shown. */
+  option_order?: number[];
   created_at: string;
 };
 

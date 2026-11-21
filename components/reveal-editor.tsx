@@ -1,14 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Crosshair, Image as ImageIcon, Loader2, Pause, Play, Plus, Upload, X } from 'lucide-react';
+import { Crosshair, Pause, Play, Plus, X } from 'lucide-react';
 import type { Question, QuestionType } from '@/lib/supabase';
-import { decayStartMs, getGuestSession, timeFactor } from '@/lib/supabase';
+import { decayStartMs, timeFactor } from '@/lib/supabase';
 import {
   MAX_BLANKS, MAX_TILES, MIN_TILES, blankHint, blanksConfig, blockyConfig, blockyTotal, dezoomConfig, parseBlanks,
   revealFactor, squareGrid, type RevealConfig,
 } from '@/lib/reveal';
-import { QUESTION_IMAGE_ACCEPT, QUESTION_IMAGE_MAX_MB, uploadQuestionImage } from '@/lib/image-upload';
+import { ImageUrlField } from '@/components/image-field';
 import { BlanksInputs, RevealImage } from '@/components/reveal-question';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -83,50 +83,6 @@ function Choice<T extends string>({ name, value, options, onChange }: { name: st
   );
 }
 
-function ImageField({ value, onChange }: { value: string; onChange: (url: string) => void }) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const canUpload = !getGuestSession();
-
-  const pick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    setBusy(true);
-    setError(null);
-    const res = await uploadQuestionImage(file);
-    setBusy(false);
-    if (res.url) onChange(res.url);
-    else setError(res.error ?? 'Upload failed.');
-  };
-
-  return (
-    <div>
-      <label className={label}>
-        <span className="flex items-center gap-1.5"><ImageIcon className="w-3.5 h-3.5" /> Picture to guess</span>
-      </label>
-      <div className="flex gap-2">
-        <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="https://… image URL" className="flex-1" aria-label="Picture URL" />
-        {canUpload && (
-          <>
-            <input ref={fileRef} type="file" accept={QUESTION_IMAGE_ACCEPT} className="hidden" onChange={pick} aria-label="Upload a picture" />
-            <Button type="button" variant="outline" className="gap-2 shrink-0" onClick={() => fileRef.current?.click()} disabled={busy}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Upload
-            </Button>
-          </>
-        )}
-      </div>
-      <p className="text-xs text-muted-foreground mt-1">
-        {canUpload
-          ? `JPG, PNG, WebP, GIF, AVIF or BMP from your device, ${QUESTION_IMAGE_MAX_MB} MB at most. Resized to 1600 px so it loads fast on phones.`
-          : 'Guests can paste an image URL. Sign in to upload pictures from your device.'}
-      </p>
-      {error && <p role="alert" className="text-xs text-destructive mt-1">{error}</p>}
-    </div>
-  );
-}
-
 /** Drag the circle (or click, or use the arrow keys) to choose where the zoom starts. */
 function FocusPicker({ src, x, y, onPick }: { src: string; x: number; y: number; onPick: (x: number, y: number) => void }) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -149,6 +105,9 @@ function FocusPicker({ src, x, y, onPick }: { src: string; x: number; y: number;
         role="slider"
         tabIndex={0}
         aria-label="Zoom point"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(x * 100)}
         aria-valuetext={`${Math.round(x * 100)}% from the left, ${Math.round(y * 100)}% from the top`}
         className="relative w-fit mx-auto rounded-lg overflow-hidden border border-border cursor-crosshair touch-none select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onPointerDown={(e) => {
@@ -252,7 +211,8 @@ function Preview({ question }: { question: RevealDraft }) {
   );
 }
 
-function AcceptedAnswers({ answers, onChange }: { answers: string[]; onChange: (a: string[]) => void }) {
+/** The list of accepted typed answers, used by open answer, de-zoom and blocky questions. */
+export function AcceptedAnswers({ answers, onChange }: { answers: string[]; onChange: (a: string[]) => void }) {
   const list = answers.length ? answers : [''];
   return (
     <div className="space-y-2">
@@ -330,7 +290,14 @@ function BlockySettings({ question, set }: { question: RevealDraft; set: (patch:
         <Choice name="Order" value={c.order} onChange={(v) => set({ order: v })}
           options={[{ value: 'random', label: 'Random' }, { value: 'spiral', label: 'Centre outwards' }, { value: 'edges', label: 'Edges inwards' }]} />
         <Choice name="Hidden tiles" value={c.style} onChange={(v) => set({ style: v })}
-          options={[{ value: 'pixel', label: 'Pixelated' }, { value: 'blur', label: 'Blurred' }]} />
+          options={[
+            { value: 'pixel', label: 'Pixelated' },
+            { value: 'blur', label: 'Blurred' },
+            { value: 'solid', label: 'Solid colour' },
+            { value: 'shuffle', label: 'Shuffled' },
+            { value: 'cards', label: 'Cards' },
+            { value: 'noise', label: 'TV noise' },
+          ]} />
       </div>
       {c.style === 'blur' && (
         <Range name="Blur strength" value={c.blur} min={1} max={5} step={1} shown={['', 'Light', 'Soft', 'Medium', 'Strong', 'Very strong'][c.blur]}
@@ -353,7 +320,7 @@ export function RevealSettings({ question, onChange }: Props) {
       <div className="space-y-4">
         <div className="p-3 rounded-lg bg-card/50 border border-border text-xs text-muted-foreground space-y-1">
           <p>Write the sentence above and put each missing word in double braces, with other accepted answers after a |</p>
-          <p className="font-mono text-foreground">La capitale della {'{{'}Francia{'}}'} è {'{{'}Parigi|Paris{'}}'}</p>
+          <p className="font-mono text-foreground">The capital of {'{{'}France{'}}'} is {'{{'}Paris|Parigi{'}}'}</p>
         </div>
         <p className={cn('text-xs font-medium', valid ? 'text-emerald-400' : 'text-destructive')}>
           {answers.length === 0
@@ -370,8 +337,8 @@ export function RevealSettings({ question, onChange }: Props) {
             value={c.hint}
             options={[
               { value: 'none', label: 'None' },
-              { value: 'length', label: `Length (${blankHint(['Parigi'], 'length')})` },
-              { value: 'first', label: `First letter (${blankHint(['Parigi'], 'first')})` },
+              { value: 'length', label: `Length (${blankHint(['Paris'], 'length')})` },
+              { value: 'first', label: `First letter (${blankHint(['Paris'], 'first')})` },
             ]}
             onChange={(v) => set({ hint: v })}
           />
@@ -388,7 +355,7 @@ export function RevealSettings({ question, onChange }: Props) {
   const d = dezoomConfig(q);
   return (
     <div className="space-y-4">
-      <ImageField value={question.image_url} onChange={(url) => onChange({ image_url: url })} />
+      <ImageUrlField label="Picture to guess" value={question.image_url} onChange={(url) => onChange({ image_url: url })} />
 
       {question.type === 'dezoom' ? (
         <>

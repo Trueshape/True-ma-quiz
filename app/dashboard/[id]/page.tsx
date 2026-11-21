@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Plus, Trash2, GripVertical, Image as ImageIcon, Save, Check, X, Info, Sliders, Type, List, ArrowUp, ArrowDown, ArrowRight as ArrowRightIcon, Play, ZoomOut, Grid3x3, TextCursorInput } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, GripVertical, Image as ImageIcon, Save, Check, X, Info, Sliders, Type, List, ArrowUp, ArrowDown, ArrowRight as ArrowRightIcon, Play, Copy, ZoomOut, Grid3x3, TextCursorInput } from 'lucide-react';
 import { YouTubeEmbed, parseYouTubeId } from '@/components/youtube-embed';
 import { supabase, type Quiz, type Question, type QuestionType, decayStartMs, getGuestSession } from '@/lib/supabase';
 import { saveQuiz } from '@/lib/game-api';
@@ -18,7 +18,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { MAX_BLANKS, defaultRevealConfig, isNewType, isRevealType, parseBlanks, type RevealConfig } from '@/lib/reveal';
-import { RevealSettings } from '@/components/reveal-editor';
+import { AcceptedAnswers, RevealSettings } from '@/components/reveal-editor';
+import { ImageUrlField, UploadButton } from '@/components/image-field';
 
 type QuestionDraft = {
   id?: string;
@@ -47,6 +48,8 @@ type QuestionDraft = {
   info_image_position: 'top' | 'bottom' | 'left' | 'right';
   reveal_config: RevealConfig;
   points_decay_start_ms: number | null;
+  shuffle_options: boolean;
+  solution_image_url: string;
 };
 
 const TF_OPTIONS = ['True', 'False'];
@@ -149,6 +152,8 @@ export default function QuizEditorPage() {
         info_image_position: (x.info_image_position as 'top' | 'bottom' | 'left' | 'right') ?? 'top',
         reveal_config: x.reveal_config ?? {},
         points_decay_start_ms: x.points_decay_start_ms ?? null,
+        shuffle_options: x.shuffle_options ?? false,
+        solution_image_url: x.solution_image_url ?? '',
       }))
     );
     setLoading(false);
@@ -192,12 +197,23 @@ export default function QuizEditorPage() {
       info_image_position: 'top',
       reveal_config: defaultRevealConfig(type),
       points_decay_start_ms: null,
+      shuffle_options: false,
+      solution_image_url: '',
     };
     setQuestions((q) => [...q, newQ]);
   };
 
   const updateQuestion = (idx: number, patch: Partial<QuestionDraft>) => {
     setQuestions((qs) => qs.map((q, i) => (i === idx ? { ...q, ...patch } : q)));
+  };
+
+  // The copy goes right after the original, without its id so it is saved as a new question.
+  const duplicateQuestion = (idx: number) => {
+    setQuestions((qs) => {
+      const { id: _id, ...copy } = qs[idx];
+      const next = [...qs.slice(0, idx + 1), { ...copy }, ...qs.slice(idx + 1)];
+      return next.map((q, i) => ({ ...q, position: i }));
+    });
   };
 
   const removeQuestion = (idx: number) => {
@@ -317,6 +333,8 @@ export default function QuizEditorPage() {
       info_image_position: q.info_image_position,
       reveal_config: isNewType(q.type) ? q.reveal_config : null,
       points_decay_start_ms: q.type === 'info' ? null : q.points_decay_start_ms,
+      shuffle_options: q.type === 'mc' && q.shuffle_options,
+      solution_image_url: q.type === 'info' ? null : q.solution_image_url.trim() || null,
     }));
     const pendingTag = normalizeTag(tagText);
     const finalTags = pendingTag && !tags.includes(pendingTag) && tags.length < MAX_TAGS ? [...tags, pendingTag] : tags;
@@ -456,6 +474,7 @@ export default function QuizEditorPage() {
                   total={questions.length}
                   onChange={(patch) => updateQuestion(idx, patch)}
                   onRemove={() => removeQuestion(idx)}
+                  onDuplicate={() => duplicateQuestion(idx)}
                   onMove={(dir) => moveQuestion(idx, dir)}
                 />
               ))}
@@ -496,15 +515,17 @@ const OPTION_COLORS = [
 ];
 
 function QuestionCard({
-  question, index, total, onChange, onRemove, onMove,
+  question, index, total, onChange, onRemove, onDuplicate, onMove,
 }: {
   question: QuestionDraft;
   index: number;
   total: number;
   onChange: (patch: Partial<QuestionDraft>) => void;
   onRemove: () => void;
+  onDuplicate: () => void;
   onMove: (dir: -1 | 1) => void;
 }) {
+  const [mediaError, setMediaError] = useState<string | null>(null);
   const [startTimeInput, setStartTimeInput] = useState(formatTimeMs(question.video_start_ms));
   const [audioStartTimeInput, setAudioStartTimeInput] = useState(formatTimeMs(question.audio_start_ms ?? 0));
 
@@ -557,7 +578,10 @@ function QuestionCard({
             <Button variant="ghost" size="icon" className="h-8 w-8" disabled={index === total - 1} onClick={() => onMove(1)}>
               <span className="text-xs">↓</span>
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={onRemove}>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onDuplicate} title="Duplicate question" aria-label="Duplicate question">
+              <Copy className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={onRemove} title="Delete question" aria-label="Delete question">
               <Trash2 className="w-4 h-4" />
             </Button>
           </div>
@@ -567,7 +591,7 @@ function QuestionCard({
         <Input
           value={question.prompt}
           onChange={(e) => onChange({ prompt: e.target.value })}
-          placeholder={isInfo ? 'Info text (e.g. "Part 2: History")' : question.type === 'blanks' ? 'La capitale della {{Francia}} è {{Parigi|Paris}}' : isNew ? 'e.g. What is this monument?' : 'Type your question...'}
+          placeholder={isInfo ? 'Info text (e.g. "Part 2: History")' : question.type === 'blanks' ? 'The capital of {{France}} is {{Paris|Parigi}}' : isNew ? 'e.g. What is this monument?' : 'Type your question...'}
           className="text-base"
         />
 
@@ -591,9 +615,11 @@ function QuestionCard({
                   onChange({ image_url: val, video_url: '', audio_url: '' });
                 }
               }}
-              placeholder="https://youtube.com/... oppure audio.mp3 oppure immagine.jpg"
+              placeholder="https://youtube.com/… or audio.mp3 or image.jpg"
               className="flex-1 min-w-[200px]"
+              aria-label="Media URL"
             />
+            <UploadButton onUploaded={(url) => onChange({ image_url: url, video_url: '', audio_url: '' })} onError={setMediaError} />
             {question.video_url && parseYouTubeId(question.video_url) && (
               <>
                 <label className="text-xs font-medium text-muted-foreground whitespace-nowrap">Start</label>
@@ -619,6 +645,8 @@ function QuestionCard({
               </>
             )}
           </div>
+
+          {mediaError && <p role="alert" className="text-xs text-destructive mt-1">{mediaError}</p>}
 
           {/* YouTube preview */}
           {question.video_url && parseYouTubeId(question.video_url) && (
@@ -706,6 +734,12 @@ function QuestionCard({
               <Button variant="ghost" size="sm" onClick={addOption} className="mt-2 gap-1.5 text-muted-foreground">
                 <Plus className="w-3.5 h-3.5" /> Add option
               </Button>
+            )}
+            {isMC && (
+              <label className="mt-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <Switch checked={question.shuffle_options} onCheckedChange={(v) => onChange({ shuffle_options: v })} aria-label="Shuffle answer order" />
+                Shuffle answer order in each game
+              </label>
             )}
           </div>
         )}
@@ -834,44 +868,7 @@ function QuestionCard({
           </div>
         )}
 
-        {isOpen && (
-          <div className="space-y-3">
-            <label className="text-xs font-medium text-muted-foreground">Correct answers (accepts multiple)</label>
-            <p className="text-xs text-muted-foreground">Players type a free-text answer. Scoring is based on how close their answer matches any of these (fuzzy matching).</p>
-            {question.open_answers.map((ans, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <Input
-                  value={ans}
-                  onChange={(e) => {
-                    const newAns = [...question.open_answers];
-                    newAns[i] = e.target.value;
-                    onChange({ open_answers: newAns });
-                  }}
-                  placeholder={`Accepted answer ${i + 1}`}
-                  className="flex-1"
-                />
-                {question.open_answers.length > 1 && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onChange({ open_answers: question.open_answers.filter((_, idx) => idx !== i) })}
-                    className="h-8 w-8 shrink-0"
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                )}
-              </div>
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onChange({ open_answers: [...question.open_answers, ''] })}
-              className="gap-1 h-8 text-xs"
-            >
-              <Plus className="w-3 h-3" /> Add another accepted answer
-            </Button>
-          </div>
-        )}
+        {isOpen && <AcceptedAnswers answers={question.open_answers} onChange={(open_answers) => onChange({ open_answers })} />}
 
         {isInfo && (
           <div className="space-y-3">
@@ -908,6 +905,10 @@ function QuestionCard({
               </div>
             )}
           </div>
+        )}
+
+        {!isInfo && (
+          <ImageUrlField label="Picture shown with the answer (optional)" value={question.solution_image_url} onChange={(url) => onChange({ solution_image_url: url })} preview />
         )}
 
         {!isInfo && (

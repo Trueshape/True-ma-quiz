@@ -13,7 +13,8 @@ import { useAudio } from '@/components/audio-provider';
 import { QuestionMedia } from '@/components/question-media';
 import { cn } from '@/lib/utils';
 import { isNewType } from '@/lib/reveal';
-import { HostNewTypeView, NewTypeResult } from '@/components/reveal-question';
+import { seededOrder, shuffleOptions } from '@/lib/seeded';
+import { HostNewTypeView, NewTypeResult, SolutionImage } from '@/components/reveal-question';
 
 export default function HostPage() {
   const params = useParams();
@@ -55,7 +56,8 @@ export default function HostPage() {
     ]);
     setCode((await getHostCode(sessionId)) ?? '');
     setQuiz(q as Quiz | null);
-    setQuestions((qs || []) as Question[]);
+    // One order of the answers per game, the same the players see.
+    setQuestions(((qs || []) as Question[]).map((x) => shuffleOptions(x, `${sessionId}:${x.id}`)));
     setPlayers((pls || []) as Player[]);
     setLoading(false);
   }, [sessionId, router, toast]);
@@ -574,7 +576,8 @@ function HostReorderView({
             <span>Reorder question — players drag items into the correct order</span>
           </div>
           <div className="space-y-2">
-            {(question.reorder_correct_order ?? []).map((optIdx, pos) => (
+            {/* Mixed up, so the projected screen does not give the order away. */}
+            {seededOrder(question.options.length, question.id).map((optIdx, pos) => (
               <div key={pos} className="flex items-center gap-3 p-3 rounded-xl border border-violet-500/30 bg-violet-500/10">
                 <span className="w-7 h-7 rounded-lg bg-violet-500/20 text-violet-400 flex items-center justify-center text-xs font-bold shrink-0">{pos + 1}</span>
                 {question.reorder_item_images?.[optIdx] && (
@@ -626,12 +629,6 @@ function HostOpenView({
             <Type className="w-5 h-5" />
             <span>Open answer — players type a free-text response</span>
           </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Accepted answers:</p>
-            {(question.open_answers ?? []).map((ans, i) => (
-              <p key={i} className="text-lg font-bold text-emerald-400">{ans}</p>
-            ))}
-          </div>
         </CardContent>
       </Card>
 
@@ -664,6 +661,7 @@ function HostLeaderboardView({
       <Card className="mb-6">
         <CardContent className="p-6">
           {question.type !== 'blanks' && <p className="text-lg font-medium text-center mb-4">{question.prompt}</p>}
+          <SolutionImage url={question.solution_image_url} />
           {isNewType(question.type) ? (
             <NewTypeResult question={question} />
           ) : isSlider ? (

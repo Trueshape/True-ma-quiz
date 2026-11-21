@@ -1,4 +1,5 @@
 import { computeOpenPoints, decayStartMs, timeFactor, type Question } from '@/lib/supabase';
+import { seededRandom } from '@/lib/seeded';
 
 /*
   Shared rules of the three "reveal" style question types. The SQL in
@@ -16,7 +17,8 @@ import { computeOpenPoints, decayStartMs, timeFactor, type Question } from '@/li
 
 export type DezoomConfig = { start_zoom: number; end_zoom: number; focus_x: number; focus_y: number };
 export type BlockyOrder = 'random' | 'spiral' | 'edges';
-export type BlockyStyle = 'pixel' | 'blur';
+export type BlockyStyle = 'pixel' | 'blur' | 'solid' | 'shuffle' | 'cards' | 'noise';
+export const BLOCKY_STYLES: BlockyStyle[] = ['pixel', 'blur', 'solid', 'shuffle', 'cards', 'noise'];
 export type BlockyConfig = {
   /** Tiles the creator asked for. */
   tiles: number;
@@ -77,7 +79,7 @@ export function blockyConfig(q: WithConfig): BlockyConfig {
     tiles_per_step: Math.round(num(c.tiles_per_step, 3, 1, total)),
     step_ms: Math.round(num(c.step_ms, 2000, 500, 30000)),
     order: c.order === 'spiral' || c.order === 'edges' ? c.order : 'random',
-    style: c.style === 'blur' ? 'blur' : 'pixel',
+    style: BLOCKY_STYLES.includes(c.style as BlockyStyle) ? (c.style as BlockyStyle) : 'pixel',
     blur: Math.round(num(c.blur, 3, 1, 5)),
   };
 }
@@ -132,21 +134,9 @@ export function dezoomLevel(c: DezoomConfig, progress: number): number {
   return c.start_zoom * Math.pow(c.end_zoom / c.start_zoom, Math.min(1, Math.max(0, progress)));
 }
 
-// Small seeded random generator, so the host and every player see the same order.
-function seeded(seed: string) {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
-  return () => {
-    h = (h + 0x6d2b79f5) | 0;
-    let t = Math.imul(h ^ (h >>> 15), 1 | h);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** Order in which the tiles appear: indexes 0..cols*rows-1, row by row. */
+/** Order in which the tiles appear: indexes 0..cols*rows-1, row by row. Same seed, same order everywhere. */
 export function tileOrder(cols: number, rows: number, order: BlockyOrder, seed: string): number[] {
-  const rand = seeded(seed);
+  const rand = seededRandom(seed);
   const tiles = Array.from({ length: cols * rows }, (_, i) => ({ i, r: rand() }));
   const midC = (cols - 1) / 2;
   const midR = (rows - 1) / 2;

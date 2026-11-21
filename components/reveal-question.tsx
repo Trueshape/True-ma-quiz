@@ -8,6 +8,7 @@ import {
   isRevealType, parseBlanks, revealProgress, revealedTiles, squareGrid, tileOrder, type BlockyConfig, type DezoomConfig,
 } from '@/lib/reveal';
 import { computeOpenPoints } from '@/lib/supabase';
+import { seededOrder } from '@/lib/seeded';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -42,6 +43,7 @@ export function DezoomImage({ src, config, progress, className }: { src: string;
 }
 
 const MAX_CANVAS = 1200;
+const FLIP_MS = 450;
 
 export function BlockyImage({
   src, config, seed, shown, className,
@@ -64,11 +66,16 @@ export function BlockyImage({
     };
   }, [src]);
 
+  // Tiles already drawn as shown, and when each card started flipping (cards style).
+  const seen = useRef<Set<number> | null>(null);
+  const flips = useRef(new Map<number, number>());
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx || !img || !grid) return;
     const { cols, rows } = grid;
+    const style = config.style;
     // Square tiles: the picture is cropped around its centre to cols x rows squares.
     const side = Math.min(img.naturalWidth / cols, img.naturalHeight / rows);
     const cropW = side * cols;
@@ -78,35 +85,133 @@ export function BlockyImage({
     const scale = Math.min(1, MAX_CANVAS / Math.max(cropW, cropH));
     const w = Math.round(cropW * scale);
     const h = Math.round(cropH * scale);
-    canvas.width = w;
-    canvas.height = h;
-
-    // Hidden tiles: the picture shrunk to a few pixels per tile, then stretched back.
-    // Pixel style: one colour per tile, sharp edges. Blur style: smoothed, the stronger
-    // the blur the fewer pixels are kept.
-    const perTile = config.style === 'pixel' ? 1 : Math.pow(2, 3 - config.blur);
-    const small = document.createElement('canvas');
-    small.width = Math.max(1, Math.round(cols * perTile));
-    small.height = Math.max(1, Math.round(rows * perTile));
-    small.getContext('2d')?.drawImage(img, ox, oy, cropW, cropH, 0, 0, small.width, small.height);
-    ctx.imageSmoothingEnabled = config.style === 'blur';
-    ctx.drawImage(small, 0, 0, w, h);
-    ctx.imageSmoothingEnabled = true;
-
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
     const t = w / cols;
+
     const visible = new Set(order.slice(0, shown));
-    for (let i = 0; i < cols * rows; i++) {
-      const x = (i % cols) * t;
-      const y = Math.floor(i / cols) * t;
-      if (visible.has(i)) {
-        ctx.drawImage(img, ox + x / scale, oy + y / scale, t / scale, t / scale, x, y, t, t);
-      } else {
+    const start = performance.now();
+    // Only tiles that appear while the picture is on screen flip; not the ones already shown.
+    if (style === 'cards' && seen.current) {
+      visible.forEach((i) => {
+        if (!seen.current!.has(i)) flips.current.set(i, start);
+      });
+    }
+    seen.current = new Set(visible);
+
+    const hidden: number[] = [];
+    for (let i = 0; i < cols * rows; i++) if (!visible.has(i)) hidden.push(i);
+    // Shuffled style: each hidden tile shows another hidden tile; the same for everyone.
+    const mixed = style === 'shuffle' ? seededOrder(hidden.length, `${seed}:${hidden.length}`).map((k) => hidden[k]) : [];
+    const sourceOf = new Map(mixed.map((tile, k) => [tile, mixed[(k + 1) % mixed.length]]));
+
+    // Pixel and blur styles: the picture shrunk to a few pixels per tile, then stretched
+    // back. Pixel: one colour per tile, sharp edges. Blur: smoothed, the stronger the blur
+    // the fewer pixels are kept.
+    let small: HTMLCanvasElement | null = null;
+    if (style === 'pixel' || style === 'blur') {
+      const perTile = style === 'pixel' ? 1 : Math.pow(2, 3 - config.blur);
+      small = document.createElement('canvas');
+      small.width = Math.max(1, Math.round(cols * perTile));
+      small.height = Math.max(1, Math.round(rows * perTile));
+      small.getContext('2d')?.drawImage(img, ox, oy, cropW, cropH, 0, 0, small.width, small.height);
+    }
+    const noise = style === 'noise' ? document.createElement('canvas') : null;
+    if (noise) noise.width = noise.height = 96;
+
+    const drawTile = (tile: number, x: number, y: number) =>
+      ctx.drawImage(img, ox + (tile % cols) * side, oy + Math.floor(tile / cols) * side, side, side, x, y, t, t);
+    const drawCardBack = (x: number, y: number) => {
+      const pad = Math.max(1, t * 0.04);
+      const g = ctx.createLinearGradient(x, y, x + t, y + t);
+      g.addColorStop(0, '#7c3aed');
+      g.addColorStop(1, '#db2777');
+      ctx.fillStyle = g;
+      ctx.fillRect(x + pad, y + pad, t - pad * 2, t - pad * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.font = `bold ${Math.round(t * 0.5)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('?', x + t / 2, y + t / 2 + t * 0.03);
+    };
+    const fillNoise = () => {
+      const nctx = noise?.getContext('2d');
+      if (!noise || !nctx) return;
+      const data = nctx.createImageData(noise.width, noise.height);
+      for (let p = 0; p < data.data.length; p += 4) {
+        const v = Math.random() * 255;
+        data.data[p] = data.data[p + 1] = data.data[p + 2] = v;
+        data.data[p + 3] = 255;
+      }
+      nctx.putImageData(data, 0, 0);
+    };
+
+    /** Draws one frame; returns true while something still moves. */
+    const draw = (now: number) => {
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, w, h);
+      if (small) {
+        ctx.imageSmoothingEnabled = style === 'blur';
+        ctx.drawImage(small, 0, 0, w, h);
+        ctx.imageSmoothingEnabled = true;
+      }
+      if (noise) fillNoise();
+      let moving = noise != null && hidden.length > 0;
+      for (let i = 0; i < cols * rows; i++) {
+        const x = (i % cols) * t;
+        const y = Math.floor(i / cols) * t;
+        if (visible.has(i)) {
+          const began = flips.current.get(i);
+          if (began !== undefined && now - began < FLIP_MS) {
+            // The card turns: its back shrinks to a line, then the picture opens out.
+            moving = true;
+            const p = Math.max(0, now - began) / FLIP_MS;
+            ctx.save();
+            ctx.translate(x + t / 2, 0);
+            ctx.scale(Math.max(0.02, Math.abs(1 - 2 * p)), 1);
+            ctx.translate(-(x + t / 2), 0);
+            if (p < 0.5) drawCardBack(x, y);
+            else drawTile(i, x, y);
+            ctx.restore();
+          } else {
+            drawTile(i, x, y);
+          }
+          continue;
+        }
+        if (style === 'solid') {
+          ctx.fillStyle = '#334155';
+          ctx.fillRect(x, y, t, t);
+        } else if (style === 'shuffle') {
+          drawTile(sourceOf.get(i) ?? i, x, y);
+        } else if (style === 'cards') {
+          drawCardBack(x, y);
+        } else if (noise) {
+          ctx.imageSmoothingEnabled = false;
+          const n = 24;
+          ctx.drawImage(noise, Math.floor(Math.random() * (96 - n)), Math.floor(Math.random() * (96 - n)), n, n, x, y, t, t);
+          ctx.imageSmoothingEnabled = true;
+        }
         ctx.strokeStyle = 'rgba(0,0,0,0.35)';
         ctx.lineWidth = 1;
         ctx.strokeRect(x + 0.5, y + 0.5, t - 1, t - 1);
       }
-    }
-  }, [img, grid, shown, order, config.style, config.blur]);
+      return moving;
+    };
+
+    let raf = 0;
+    let last = start;
+    const tick = (now: number) => {
+      // TV noise changes about 15 times a second; card flips run smoothly.
+      if (noise && now - last < 66 && !Array.from(flips.current.values()).some((b) => now - b < FLIP_MS)) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+      last = now;
+      if (draw(now)) raf = requestAnimationFrame(tick);
+    };
+    if (draw(start)) raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [img, grid, shown, order, seed, config.style, config.blur]);
 
   return <canvas ref={canvasRef} role="img" aria-label="Hidden picture" className={cn('block mx-auto rounded-xl max-w-full h-auto', className)} />;
 }
@@ -310,6 +415,15 @@ export function NewTypeResult({ question, openText, blankTexts }: { question: Qu
         </p>
       )}
     </div>
+  );
+}
+
+/** The optional picture the creator added to the solution. */
+export function SolutionImage({ url }: { url: string | null | undefined }) {
+  if (!url) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={url} alt="" className="block mx-auto max-h-56 max-w-full rounded-xl mb-4" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
   );
 }
 

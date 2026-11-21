@@ -13,7 +13,8 @@ import { useAudio } from '@/components/audio-provider';
 import { QuestionMedia } from '@/components/question-media';
 import { cn } from '@/lib/utils';
 import { computeBlanksPoints, computeRevealPoints, isNewType } from '@/lib/reveal';
-import { NewTypeQuestionView, NewTypeResult, newTypeAnswerRight, type NewTypeAnswer } from '@/components/reveal-question';
+import { shuffleOptions } from '@/lib/seeded';
+import { NewTypeQuestionView, NewTypeResult, SolutionImage, newTypeAnswerRight, type NewTypeAnswer } from '@/components/reveal-question';
 
 const OPTION_COLORS = [
   'border-rose-500 bg-rose-500/15 hover:bg-rose-500/25 text-rose-50',
@@ -77,7 +78,9 @@ export default function PracticePage() {
       return;
     }
     setQuiz(q as Quiz);
-    setQuestions(qs as Question[]);
+    // A new order of the answers every time practice starts.
+    const run = String(Date.now());
+    setQuestions((qs as Question[]).map((x) => shuffleOptions(x, `${run}:${x.id}`)));
     // If first question is an info page, we still show it
     setTimeLeft((qs as Question[])[0].time_limit_ms);
     setLoading(false);
@@ -639,7 +642,7 @@ function PracticeReorderView({
         <CardContent className="p-6">
           <QuestionMedia imageUrl={question.image_url} videoUrl={question.video_url} audioUrl={question.audio_url} audioVolume={question.audio_volume} audioStartMs={question.audio_start_ms} videoStartMs={question.video_start_ms} videoHidden={question.video_hidden} videoVolume={question.video_volume} audioHidden={question.audio_hidden} autoplay muted className="mb-4" imgClassName="max-h-56" />
           <h2 className="text-xl md:text-2xl font-bold text-center mb-2">{question.prompt}</h2>
-          <p className="text-sm text-muted-foreground text-center mb-6">Trascina per riordinare dall&apos;alto verso il basso</p>
+          <p className="text-sm text-muted-foreground text-center mb-6">Drag the items into the right order, from top to bottom</p>
           <div className="space-y-2">
             {order.map((optIdx, pos) => (
               <div
@@ -759,6 +762,7 @@ function PracticeRevealView({
         <CardContent className="p-5">
           {!isNew && <QuestionMedia imageUrl={question.image_url} videoUrl={question.video_url} audioUrl={question.audio_url} audioVolume={question.audio_volume} audioStartMs={question.audio_start_ms} className="mb-4" imgClassName="max-h-48" />}
           {question.type !== 'blanks' && <p className="text-base font-medium text-center mb-3">{question.prompt}</p>}
+          <SolutionImage url={question.solution_image_url} />
           {isNew ? (
             <NewTypeResult question={question} openText={openText} blankTexts={blankTexts} />
           ) : isSlider ? (

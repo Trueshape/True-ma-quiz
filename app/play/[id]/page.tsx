@@ -14,7 +14,8 @@ import { useAudio } from '@/components/audio-provider';
 import { QuestionMedia } from '@/components/question-media';
 import { cn } from '@/lib/utils';
 import { isNewType } from '@/lib/reveal';
-import { NewTypeQuestionView, NewTypeResult, type NewTypeAnswer } from '@/components/reveal-question';
+import { originalOption, shuffleOptions } from '@/lib/seeded';
+import { NewTypeQuestionView, NewTypeResult, SolutionImage, type NewTypeAnswer } from '@/components/reveal-question';
 
 const OPTION_COLORS = [
   'border-rose-500 bg-rose-500/15 hover:bg-rose-500/25 text-rose-50',
@@ -76,7 +77,8 @@ export default function PlayPage() {
     }
     setSession(session);
     setPlayer(pl as Player);
-    setQuestions((qs || []) as Question[]);
+    // One order of the answers per game, the same the host shows.
+    setQuestions(((qs || []) as Question[]).map((x) => shuffleOptions(x, `${sessionId}:${x.id}`)));
     setPlayers((pls || []) as Player[]);
     setLoading(false);
   }, [sessionId, router, toast]);
@@ -239,7 +241,8 @@ export default function PlayPage() {
     setChosenIndex(optionIndex);
     setHasAnswered(true);
     stopTimer();
-    await sendAnswer({ chosenIndex: optionIndex });
+    // The server knows the options in their original order.
+    await sendAnswer({ chosenIndex: originalOption(currentQ, optionIndex) });
   };
 
   const submitSliderAnswer = async (value: number) => {
@@ -664,7 +667,7 @@ function PlayerReorderView({
         <CardContent className="p-6">
           <QuestionMedia imageUrl={question.image_url} videoUrl={question.video_url} audioUrl={question.audio_url} audioVolume={question.audio_volume} audioStartMs={question.audio_start_ms} videoStartMs={question.video_start_ms} videoHidden={question.video_hidden} videoVolume={question.video_volume} audioHidden={question.audio_hidden} hideAudioControls className="mb-4" imgClassName="max-h-56" />
           <h2 className="text-xl md:text-2xl font-bold text-center mb-2">{question.prompt}</h2>
-          <p className="text-sm text-muted-foreground text-center mb-6">Trascina per riordinare dall&apos;alto verso il basso</p>
+          <p className="text-sm text-muted-foreground text-center mb-6">Drag the items into the right order, from top to bottom</p>
           <div className="space-y-2">
             {order.map((optIdx, pos) => (
               <div
@@ -788,6 +791,7 @@ function PlayerLeaderboardView({
           <Card className="mb-4">
             <CardContent className="p-5">
               {question.type !== 'blanks' && <p className="text-base font-medium text-center mb-3">{question.prompt}</p>}
+              <SolutionImage url={question.solution_image_url} />
               {isNewType(question.type) ? (
                 <NewTypeResult question={question} openText={openText} blankTexts={blankTexts} />
               ) : isSlider ? (

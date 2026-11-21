@@ -216,3 +216,24 @@ describe('points going down and square tiles: the server matches the TypeScript'
     expect(Number(res.rows[0].f)).toBeCloseTo(s == null ? 1 : timeFactor(taken, 20000, s), 6);
   });
 });
+
+describe('shuffled answers and solution pictures are saved', () => {
+  it('stores both settings, and old clients that do not send them get the defaults', async () => {
+    db = await createDb();
+    const created = await asAnon(() => call('create_quiz', ['Shuffle', null, 'G']));
+    const mcq = { type: 'mc', prompt: '?', options: ['a', 'b', 'c'], correct_index: 2, time_limit_ms: 20000, points_value: 1000 };
+    await asAnon(() =>
+      call('save_quiz', [created.quiz.id, created.token, { title: 'Shuffle' }, [
+        { ...mcq, shuffle_options: true, solution_image_url: ' https://x.test/s.jpg ' },
+        mcq,
+      ]])
+    );
+    const res = await db.query<{ shuffle_options: boolean; solution_image_url: string | null }>(
+      `select shuffle_options, solution_image_url from questions where quiz_id = $1 order by position`, [created.quiz.id]
+    );
+    expect(res.rows).toEqual([
+      { shuffle_options: true, solution_image_url: 'https://x.test/s.jpg' },
+      { shuffle_options: false, solution_image_url: null },
+    ]);
+  });
+});
