@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Check, X, Trophy, Zap, Users, Loader2, Info, ArrowRight, ArrowUp, ArrowDown, Type, GripVertical } from 'lucide-react';
 import { isRightOption, supabase, type Session, type Player, type Question } from '@/lib/supabase';
-import { getPlayerLobbyCode, submitAnswer as submitAnswerRpc, type AnswerPayload } from '@/lib/game-api';
+import { getPlayerLobbyCode, getPlayerStats, submitAnswer as submitAnswerRpc, type AnswerPayload, type PlayerQuestionStats } from '@/lib/game-api';
 import { HeaderEnd } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { RangeInput } from '@/components/ui/range-input';
@@ -13,6 +13,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAudio } from '@/components/audio-provider';
 import { QuestionMedia } from '@/components/question-media';
+import { PlayerGameSummary, PlayerQuestionStatsLine } from '@/components/game-stats';
 import { cn } from '@/lib/utils';
 import { isNewType } from '@/lib/reveal';
 import { originalOption, shuffleOptions } from '@/lib/seeded';
@@ -41,6 +42,7 @@ export default function PlayPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [chosenIndex, setChosenIndex] = useState<number | null>(null);
+  const [playerStats, setPlayerStats] = useState<PlayerQuestionStats[]>([]);
   const [chosenMany, setChosenMany] = useState<number[]>([]);
   const [sliderValue, setSliderValue] = useState<number | null>(null);
   const [reorderOrder, setReorderOrder] = useState<number[]>([]);
@@ -189,6 +191,20 @@ export default function PlayPage() {
       supabase.removeChannel(playersChannel);
     };
   }, [sessionId, session?.current_question_index, session?.status, player?.id]);
+
+  // Statistics of the room, read when a question ends and when the game ends.
+  useEffect(() => {
+    if (!session || (session.status !== 'leaderboard' && session.status !== 'finished')) return;
+    const playerId = sessionStorage.getItem(`player:${sessionId}`);
+    if (!playerId) return;
+    let alive = true;
+    getPlayerStats(sessionId, playerId).then((st) => {
+      if (alive) setPlayerStats(st);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [sessionId, session?.status, session?.current_question_index]);
 
   // Countdown timer
   useEffect(() => {
@@ -413,6 +429,8 @@ export default function PlayPage() {
             players={players}
             currentPlayerId={player.id}
             lastPoints={lastPoints}
+            stats={playerStats}
+            questions={questions}
             lastCorrect={lastCorrect}
             chosenIndex={chosenIndex}
             chosenMany={chosenMany}
@@ -790,9 +808,9 @@ function PlayerOpenView({
 }
 
 function PlayerLeaderboardView({
-  question, questionNumber, totalQuestions, players, currentPlayerId, lastPoints, lastCorrect, chosenIndex, chosenMany, sliderValue, reorderOrder, openText, blankTexts, isFinished,
+  question, questionNumber, totalQuestions, players, currentPlayerId, lastPoints, lastCorrect, chosenIndex, chosenMany, sliderValue, reorderOrder, openText, blankTexts, isFinished, stats, questions,
 }: {
-  question: Question; questionNumber: number; totalQuestions: number; players: Player[]; currentPlayerId: string; lastPoints: number | null; lastCorrect: boolean | null; chosenIndex: number | null; chosenMany: number[]; sliderValue: number | null; reorderOrder: number[]; openText: string; blankTexts: string[]; isFinished: boolean;
+  question: Question; questionNumber: number; totalQuestions: number; players: Player[]; currentPlayerId: string; lastPoints: number | null; lastCorrect: boolean | null; chosenIndex: number | null; chosenMany: number[]; sliderValue: number | null; reorderOrder: number[]; openText: string; blankTexts: string[]; isFinished: boolean; stats: PlayerQuestionStats[]; questions: Question[];
 }) {
   const myRank = players.findIndex((p) => p.id === currentPlayerId) + 1;
   const isInfo = question.type === 'info';
@@ -874,6 +892,8 @@ function PlayerLeaderboardView({
             </CardContent>
           </Card>
 
+          <PlayerQuestionStatsLine stats={stats.find((x) => x.question_index === questions.findIndex((q) => q.id === question.id))} />
+
           {lastCorrect !== null && (
             <div className={cn(
               'text-center mb-4 p-4 rounded-xl border animate-pop',
@@ -925,6 +945,8 @@ function PlayerLeaderboardView({
           </div>
         </CardContent>
       </Card>
+
+      {isFinished && <PlayerGameSummary stats={stats} questions={questions} />}
 
       {isFinished && (
         <div className="text-center mt-6">

@@ -218,3 +218,22 @@ export async function getQuizStats(quizId: string): Promise<QuizStats | null> {
   const { data, error } = await supabase.rpc('quiz_stats', { p_quiz_id: quizId, p_token: getGuestQuizToken(quizId) });
   return error || !data ? null : (data as QuizStats);
 }
+
+export type PlayerQuestionStats = {
+  question_index: number;
+  question_id: string;
+  players: number;
+  answered: number;
+  correct: number;
+  /** Whether this player got the question right (null: did not answer). */
+  mine: boolean | null;
+  mine_points: number | null;
+};
+
+/** For a player: how each question went for the whole room, and for this player. */
+export async function getPlayerStats(sessionId: string, playerId: string): Promise<PlayerQuestionStats[]> {
+  const token = getPlayerToken(sessionId);
+  if (!token) return [];
+  const { data, error } = await supabase.rpc('player_game_stats', { p_session_id: sessionId, p_player_id: playerId, p_token: token });
+  return error || !data ? [] : (data as PlayerQuestionStats[]);
+}

@@ -112,6 +112,19 @@ describe('a game with statistics and several right answers', () => {
     expect(stats.hardest).toMatchObject({ prompt: 'Capitale?', answered: 4, correct: 1 });
   });
 
+  it('a player sees the counts per question and whether they got it right, never the wrong answers', async () => {
+    const res = await asAnon(() => call('player_game_stats', [sessionId, players[0].player.id, players[0].token]));
+    expect(res.map((r: Json) => [r.question_index, r.answered, r.correct, r.players, r.mine])).toEqual([
+      [0, 4, 1, 5, true],
+      [1, 3, 1, 5, true],
+      [2, 4, 1, 5, true],
+    ]);
+    expect(JSON.stringify(res)).not.toContain('Berlino');
+    const bob = await asAnon(() => call('player_game_stats', [sessionId, players[1].player.id, players[1].token]));
+    expect(bob[0].mine).toBe(false);
+    expect(await failure(asAnon(() => call('player_game_stats', [sessionId, players[0].player.id, NIL])))).toContain('invalid_player');
+  });
+
   it('nobody else can read the author statistics', async () => {
     expect(await failure(asAnon(() => call('quiz_stats', [quizId, null])))).toContain('not_allowed');
     expect(await failure(asUser('22222222-0000-4000-8000-000000000002', () => call('quiz_stats', [quizId, null])))).toContain('not_allowed');

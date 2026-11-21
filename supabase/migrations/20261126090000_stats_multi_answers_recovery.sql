@@ -93,6 +93,42 @@ BEGIN
   RETURN jsonb_build_object('games', v_games, 'players', v_players, 'average_score', v_avg, 'hardest', v_hardest);
 END $$;
 
+-- ─── player statistics: what a player sees about the game ────────────────────
+
+-- For a player (player token): per question, how many answered, how many got it right,
+-- how many players there are, and whether this player got it right. No wrong answers.
+CREATE OR REPLACE FUNCTION player_game_stats(p_session_id uuid, p_player_id uuid, p_token uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_players int;
+  v_out jsonb;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM player_secrets ps JOIN players p ON p.id = ps.player_id
+    WHERE ps.player_id = p_player_id AND ps.token = p_token AND p.session_id = p_session_id
+  ) THEN
+    RAISE EXCEPTION 'invalid_player' USING ERRCODE = '42501';
+  END IF;
+  SELECT count(*) INTO v_players FROM players WHERE session_id = p_session_id;
+
+  SELECT coalesce(jsonb_agg(jsonb_build_object(
+           'question_index', s.idx, 'question_id', s.qid, 'players', v_players,
+           'answered', s.answered, 'correct', s.correct,
+           'mine', m.is_correct, 'mine_points', m.points) ORDER BY s.idx), '[]'::jsonb)
+    INTO v_out
+    FROM (
+      SELECT a.question_index AS idx, a.question_id AS qid,
+             count(*) AS answered, count(*) FILTER (WHERE a.is_correct) AS correct
+      FROM answers a WHERE a.session_id = p_session_id
+      GROUP BY a.question_index, a.question_id
+    ) s
+    LEFT JOIN answers m ON m.session_id = p_session_id AND m.player_id = p_player_id AND m.question_index = s.idx;
+  RETURN v_out;
+END $$;
+
+REVOKE ALL ON FUNCTION player_game_stats(uuid, uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION player_game_stats(uuid, uuid, uuid) TO anon, authenticated;
+
 -- ─── password recovery codes ─────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS account_recovery (

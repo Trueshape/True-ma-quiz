@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { BarChart3 } from 'lucide-react';
-import { getQuizStats, type QuestionStats, type QuizStats } from '@/lib/game-api';
+import { getQuizStats, type PlayerQuestionStats, type QuestionStats, type QuizStats } from '@/lib/game-api';
 import type { Question } from '@/lib/supabase';
 import { blankPrompt } from '@/lib/reveal';
 import { Card, CardContent } from '@/components/ui/card';
@@ -112,6 +112,60 @@ export function QuizStatsCard({ quizId }: { quizId: string }) {
             <span className="text-rose-400"> · {Math.round((h.correct / Math.max(1, h.answered)) * 100)}% right</span>
           </p>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Under a question, for players: how many in the room got it right. */
+export function PlayerQuestionStatsLine({ stats }: { stats: PlayerQuestionStats | undefined }) {
+  if (!stats || stats.answered === 0) return null;
+  const p = Math.round((stats.correct / stats.answered) * 100);
+  return (
+    <div className="mt-3 text-sm text-center text-muted-foreground">
+      <span className="font-semibold text-foreground">{stats.correct}</span> of <span className="font-semibold text-foreground">{stats.answered}</span> answered it right ({p}%)
+    </div>
+  );
+}
+
+/** End of the game, for players: how many questions they got right, and every question with its share. */
+export function PlayerGameSummary({ stats, questions }: { stats: PlayerQuestionStats[]; questions: Question[] }) {
+  if (stats.length === 0) return null;
+  const mine = stats.filter((s) => s.mine === true).length;
+  const total = stats.length;
+  return (
+    <Card className="mt-6">
+      <CardContent className="p-6">
+        <h3 className="text-sm font-semibold text-muted-foreground mb-1 flex items-center gap-2">
+          <BarChart3 className="w-4 h-4" /> YOUR GAME
+        </h3>
+        <p className="text-sm mb-4">You got <span className="font-bold">{mine}</span> of {total} questions right.</p>
+        <div className="space-y-3">
+          {stats.map((s) => {
+            const q = questions[s.question_index];
+            const p = s.answered ? Math.round((s.correct / s.answered) * 100) : 0;
+            const text = q ? (q.type === 'blanks' ? blankPrompt(q.prompt) : q.prompt) : `Question ${s.question_index + 1}`;
+            return (
+              <div key={s.question_index} className="space-y-1">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="truncate flex items-center gap-2">
+                    <span className={cn('text-xs font-bold', s.mine === true ? 'text-emerald-400' : s.mine === false ? 'text-rose-400' : 'text-muted-foreground')}>
+                      {s.mine === true ? '✓' : s.mine === false ? '✗' : '–'}
+                    </span>
+                    {text}
+                  </span>
+                  <span className="tabular-nums shrink-0 text-muted-foreground">
+                    {s.correct}/{s.answered} · <span className="font-medium text-foreground">{p}%</span>
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-card border border-border overflow-hidden" aria-hidden>
+                  <div className={cn('h-full', p >= 50 ? 'bg-emerald-500' : 'bg-rose-500')} style={{ width: `${p}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground mt-3">Percentages are of the players who answered each question, shown with the number of players in the room.</p>
       </CardContent>
     </Card>
   );
