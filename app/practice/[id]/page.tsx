@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Check, X, Trophy, Zap, Loader2, RotateCcw, Home, Info, Sliders, ArrowUp, ArrowDown, Type, GripVertical } from 'lucide-react';
-import { supabase, type Quiz, type Question, computePoints, computeSliderPoints, computeReorderPoints, computeOpenPoints, decayStartMs, getGuestSession } from '@/lib/supabase';
+import { supabase, type Quiz, type Question, computePoints, computeSliderPoints, computeReorderPoints, computeOpenPoints, computeMultiPoints, decayStartMs, getGuestSession, isRightOption } from '@/lib/supabase';
 import { HeaderEnd } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { RangeInput } from '@/components/ui/range-input';
@@ -15,6 +15,7 @@ import { QuestionMedia } from '@/components/question-media';
 import { cn } from '@/lib/utils';
 import { computeBlanksPoints, computeRevealPoints, isNewType } from '@/lib/reveal';
 import { shuffleOptions } from '@/lib/seeded';
+import { hasManyRight, MultiChoiceAnswer } from '@/components/multi-choice';
 import { NewTypeQuestionView, NewTypeResult, SolutionImage, newTypeAnswerRight, type NewTypeAnswer } from '@/components/reveal-question';
 
 const OPTION_COLORS = [
@@ -49,6 +50,7 @@ export default function PracticePage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>('question');
   const [chosenIndex, setChosenIndex] = useState<number | null>(null);
+  const [chosenMany, setChosenMany] = useState<number[]>([]);
   const [sliderValue, setSliderValue] = useState<number | null>(null);
   const [reorderOrder, setReorderOrder] = useState<number[]>([]);
   const [openText, setOpenText] = useState('');
@@ -143,6 +145,7 @@ export default function PracticePage() {
         if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
         answeredRef.current = true;
         setChosenIndex(null);
+        setChosenMany([]);
         setPhase('reveal');
       }
     }, 100);
@@ -239,6 +242,22 @@ export default function PracticePage() {
     setPhase('reveal');
   };
 
+  const handleManyAnswer = (shown: number[]) => {
+    if (phase !== 'question' || answeredRef.current) return;
+    const currentQ = questions[currentIndex];
+    if (!currentQ) return;
+    answeredRef.current = true;
+    setChosenMany(shown);
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    const timeTaken = Date.now() - questionStartRef.current;
+    const { points, isCorrect } = computeMultiPoints(shown, currentQ.correct_indices ?? [], currentQ.points_value, timeTaken, currentQ.time_limit_ms, decayStartMs(currentQ) ?? currentQ.time_limit_ms);
+    setLastPoints(points);
+    setScore((s) => s + points);
+    if (isCorrect) setCorrectCount((c) => c + 1);
+    setResults((r) => [...r, { questionIndex: currentIndex, correct: isCorrect, points, chosenIndex: null, sliderValue: null }]);
+    setPhase('reveal');
+  };
+
   const handleNewTypeAnswer = (a: NewTypeAnswer) => {
     if (phase !== 'question' || answeredRef.current) return;
     const currentQ = questions[currentIndex];
@@ -273,6 +292,7 @@ export default function PracticePage() {
     }
     setCurrentIndex(next);
     setChosenIndex(null);
+    setChosenMany([]);
     setSliderValue(null);
     setReorderOrder([]);
     setOpenText('');
@@ -285,6 +305,7 @@ export default function PracticePage() {
   const restart = () => {
     setCurrentIndex(0);
     setChosenIndex(null);
+    setChosenMany([]);
     setSliderValue(null);
     setReorderOrder([]);
     setOpenText('');
@@ -347,6 +368,7 @@ export default function PracticePage() {
             totalQuestions={scorableTotal}
             timeLeft={timeLeft}
             onAnswer={handleAnswer}
+            onAnswerMany={handleManyAnswer}
           />
         )}
 
@@ -398,6 +420,7 @@ export default function PracticePage() {
             questionNumber={scorableNumber}
             totalQuestions={scorableTotal}
             chosenIndex={chosenIndex}
+            chosenMany={chosenMany}
             sliderValue={sliderValue}
             reorderOrder={reorderOrder}
             openText={openText}
@@ -469,9 +492,9 @@ function PracticeInfoView({
 }
 
 function PracticeQuestionView({
-  question, questionNumber, totalQuestions, timeLeft, onAnswer,
+  question, questionNumber, totalQuestions, timeLeft, onAnswer, onAnswerMany,
 }: {
-  question: Question; questionNumber: number; totalQuestions: number; timeLeft: number; onAnswer: (i: number) => void;
+  question: Question; questionNumber: number; totalQuestions: number; timeLeft: number; onAnswer: (i: number) => void; onAnswerMany: (shown: number[]) => void;
 }) {
   const pct = Math.round((timeLeft / question.time_limit_ms) * 100);
   const seconds = Math.ceil(timeLeft / 1000);
@@ -498,6 +521,9 @@ function PracticeQuestionView({
         </CardContent>
       </Card>
 
+      {hasManyRight(question) ? (
+        <MultiChoiceAnswer question={question} disabled={false} onSubmit={onAnswerMany} />
+      ) : (
       <div className="grid grid-cols-2 gap-3">
         {question.options.map((opt, i) => (
           <button
@@ -516,6 +542,7 @@ function PracticeQuestionView({
           </button>
         ))}
       </div>
+      )}
     </div>
   );
 }
@@ -730,9 +757,9 @@ function PracticeOpenView({
 }
 
 function PracticeRevealView({
-  question, questionNumber, totalQuestions, chosenIndex, sliderValue, reorderOrder, openText, blankTexts, lastPoints, isLast, onNext,
+  question, questionNumber, totalQuestions, chosenIndex, chosenMany, sliderValue, reorderOrder, openText, blankTexts, lastPoints, isLast, onNext,
 }: {
-  question: Question; questionNumber: number; totalQuestions: number; chosenIndex: number | null; sliderValue: number | null; reorderOrder: number[]; openText: string; blankTexts: string[]; lastPoints: number; isLast: boolean; onNext: () => void;
+  question: Question; questionNumber: number; totalQuestions: number; chosenIndex: number | null; chosenMany: number[]; sliderValue: number | null; reorderOrder: number[]; openText: string; blankTexts: string[]; lastPoints: number; isLast: boolean; onNext: () => void;
 }) {
   const isNew = isNewType(question.type);
   const isSlider = question.type === 'slider';
@@ -746,10 +773,12 @@ function PracticeRevealView({
     ? (question.reorder_correct_order ?? []).every((v, i) => reorderOrder[i] === v)
     : isOpen
     ? (question.open_answers ?? []).some((a) => a.toLowerCase().trim() === openText.toLowerCase().trim())
+    : hasManyRight(question)
+    ? computeMultiPoints(chosenMany, question.correct_indices ?? []).isCorrect
     : chosenIndex !== null && chosenIndex === question.correct_index;
   const timedOut = isNew
     ? !openText && blankTexts.length === 0
-    : !isSlider && !isReorder && !isOpen && chosenIndex === null;
+    : !isSlider && !isReorder && !isOpen && chosenIndex === null && chosenMany.length === 0;
 
   return (
     <div>
@@ -809,8 +838,8 @@ function PracticeRevealView({
           ) : (
             <div className="grid grid-cols-2 gap-2">
               {question.options.map((opt, i) => {
-                const isCorrect = i === question.correct_index;
-                const isChosen = chosenIndex === i;
+                const isCorrect = isRightOption(question, i);
+                const isChosen = chosenIndex === i || chosenMany.includes(i);
                 return (
                   <div key={i} className={cn(
                     'p-3 rounded-lg border text-center flex items-center justify-center gap-2 text-sm',

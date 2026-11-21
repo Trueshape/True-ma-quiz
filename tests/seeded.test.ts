@@ -38,3 +38,14 @@ describe('hidden tile styles', () => {
     expect(blockyConfig({ reveal_config: { style: 'sparkles' as never } }).style).toBe('pixel');
   });
 });
+
+describe('shuffled answers with several right ones', () => {
+  it('keeps every right answer right after shuffling', () => {
+    const q = mc({ options: ['2', '3', '4', '5'], correct_index: 0, correct_indices: [0, 2] });
+    for (let g = 0; g < 20; g++) {
+      const shown = shuffleOptions(q, `game-${g}:q1`);
+      expect(shown.correct_indices!.map((i) => shown.options[i]).sort()).toEqual(['2', '4']);
+      expect(shown.correct_indices!.map((i) => originalOption(shown, i)).sort()).toEqual([0, 2]);
+    }
+  });
+});

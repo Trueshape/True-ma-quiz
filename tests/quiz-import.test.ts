@@ -41,11 +41,22 @@ describe('parseQuizText', () => {
   it.each([
     ['a missing title', `Q: X?\n* A\n- B\n`, 'Missing quiz title'],
     ['no correct answer', `# T\nQ: X?\n- A\n- B\n`, 'needs a correct answer'],
-    ['two correct answers', `# T\nQ: X?\n* A\n* B\n- C\n`, 'more than one correct'],
     ['a slider with min above max', `# T\nQ: X?\nT: slider\nMin: 10\nMax: 0\nAnswer: 5\n`, 'min must be less than max'],
     ['an open question without answers', `# T\nQ: X?\nT: open\n`, 'needs at least one accepted answer'],
     ['empty input', ``, 'Missing quiz title'],
   ])('rejects %s', (_name, text, message) => {
     expect(errorOf(text)).toContain(message);
+  });
+});
+
+describe('several right answers', () => {
+  it('more than one * makes a multiple choice question with several right answers', () => {
+    const res = parseQuizText('# T\nQ: Even numbers?\n* 2\n- 3\n* 4\n');
+    expect(res.ok && res.quiz.questions[0]).toMatchObject({ type: 'mc', correct_index: 0, correct_indices: [0, 2] });
+  });
+
+  it('one * keeps a single right answer', () => {
+    const res = parseQuizText('# T\nQ: X?\n- A\n* B\n');
+    expect(res.ok && res.quiz.questions[0]).toMatchObject({ correct_index: 1, correct_indices: null });
   });
 });

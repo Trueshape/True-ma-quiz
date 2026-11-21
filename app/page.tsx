@@ -22,6 +22,8 @@ import { HeaderEnd } from '@/components/header-controls';
 import { useAudio } from '@/components/audio-provider';
 import { supabase, getGuestSession, setGuestSession } from '@/lib/supabase';
 import { nicknameAvailable } from '@/lib/profile';
+import { createRecoveryCode, nicknameEmail, nicknameUsesEmail } from '@/lib/recovery';
+import { RecoveryCodeDialog } from '@/components/recovery-code-box';
 import { useToast } from '@/hooks/use-toast';
 
 function randomGuestNickname(): string {
@@ -41,6 +43,7 @@ export default function Home() {
   const [nickname, setNickname] = useState('');
   const [password, setPassword] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
+  const [newCode, setNewCode] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; nickname: string } | null>(null);
   const [guestUser, setGuestUser] = useState<{ nickname: string } | null>(null);
 
@@ -80,12 +83,14 @@ export default function Home() {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     const nick = nickname.trim();
-    if (nick.length < 4 || nick.length > 20) {
+    // Signing in, an account that added its own email uses that email instead of the nickname.
+    const byEmail = authMode === 'login' && nick.includes('@');
+    if (!byEmail && (nick.length < 4 || nick.length > 20)) {
       toast({ title: 'Nickname must be 4–20 characters', variant: 'destructive' });
       return;
     }
     if (authMode === 'register' && password.length < 8) {
-      toast({ title: 'Password must be at least 8 characters', description: 'There is no password reset, so keep it somewhere safe.', variant: 'destructive' });
+      toast({ title: 'Password must be at least 8 characters', variant: 'destructive' });
       return;
     }
     if (password.length > 72) {
@@ -98,7 +103,7 @@ export default function Home() {
       toast({ title: 'Username already taken', description: 'Choose a different one.', variant: 'destructive' });
       return;
     }
-    const fakeEmail = `${nick.toLowerCase()}@truemaquiz.local`;
+    const fakeEmail = byEmail ? nick : nicknameEmail(nick);
 
     if (authMode === 'register') {
       const { data, error } = await supabase.auth.signUp({
@@ -113,7 +118,10 @@ export default function Home() {
       }
       if (data.user) {
         toast({ title: `Welcome, ${nick}!` });
-        router.push('/dashboard');
+        // Show the recovery code once before going on (straight on if it could not be made).
+        const code = data.session ? await createRecoveryCode() : null;
+        if (code) setNewCode(code);
+        else router.push('/dashboard');
       }
     } else {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -122,11 +130,16 @@ export default function Home() {
       });
       setAuthBusy(false);
       if (error) {
-        toast({ title: 'Login failed', description: error.message, variant: 'destructive' });
+        const usesEmail = !byEmail && (await nicknameUsesEmail(nick));
+        toast({
+          title: 'Login failed',
+          description: usesEmail ? 'This account now signs in with its email address. Type the email instead of the nickname.' : error.message,
+          variant: 'destructive',
+        });
         return;
       }
       if (data.user) {
-        toast({ title: `Welcome back, ${nick}!` });
+        toast({ title: `Welcome back, ${data.user.user_metadata?.nickname ?? nick}!` });
         router.push('/dashboard');
       }
     }
@@ -261,13 +274,14 @@ export default function Home() {
                     </div>
                   ) : (
                     <form onSubmit={handleAuth} className="space-y-3">
+                      <RecoveryCodeDialog code={newCode} onDone={() => router.push('/dashboard')} />
                       <div>
-                        <label className="text-sm font-medium mb-1.5 block">Nickname</label>
+                        <label className="text-sm font-medium mb-1.5 block">{authMode === 'login' ? 'Nickname or email' : 'Nickname'}</label>
                         <Input
                           value={nickname}
                           onChange={(e) => setNickname(e.target.value)}
-                          placeholder="4–20 characters"
-                          maxLength={20}
+                          placeholder={authMode === 'login' ? 'Your nickname' : '4–20 characters'}
+                          maxLength={authMode === 'login' ? 254 : 20}
                           autoComplete="username"
                         />
                       </div>
@@ -281,6 +295,11 @@ export default function Home() {
                           maxLength={72}
                           autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
                         />
+                        {authMode === 'login' && (
+                          <Link href="/forgot-password" className="inline-block mt-1.5 text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline">
+                            Forgot password?
+                          </Link>
+                        )}
                       </div>
                       <Button type="submit" size="lg" className="w-full h-11 gap-2" disabled={authBusy}>
                         {authBusy ? 'Please wait...' : authMode === 'login' ? 'Log in' : 'Create account'}

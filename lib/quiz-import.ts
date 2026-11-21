@@ -15,6 +15,8 @@ export type ParsedQuestion = {
   image_url: string | null;
   reveal_config: RevealConfig | null;
   points_decay_start_ms: number | null;
+  /** Several right answers (multiple choice with more than one "*"). */
+  correct_indices: number[] | null;
 };
 
 export type ParsedQuiz = {
@@ -37,7 +39,7 @@ export type ParseResult =
  *
  * Q: Question prompt text
  * T: mc                (optional type: mc, tf, info, slider, open — defaults to mc)
- * * Correct answer text  (marks the correct option with *)
+ * * Correct answer text  (marks the correct option with *; several * = several right answers)
  * - Wrong answer text
  * - Wrong answer text
  * Time: 30             (optional, seconds)
@@ -171,6 +173,7 @@ export function parseQuizText(input: string): ParseResult {
     let image_url: string | null = null;
     let reveal: RevealConfig = {};
     let decay: number | null = null;
+    const rightOnes: number[] = [];
 
     while (i < lines.length) {
       const raw = lines[i];
@@ -274,10 +277,9 @@ export function parseQuizText(input: string): ParseResult {
         } else {
           options.push(text);
           if (isCorrect) {
-            if (hasCorrect) {
-              return { ok: false, error: `Question "${prompt}" has more than one correct answer marked with "*".` };
-            }
-            correct_index = options.length - 1;
+            // More than one "*" makes a multiple choice question with several right answers.
+            if (!hasCorrect) correct_index = options.length - 1;
+            rightOnes.push(options.length - 1);
             hasCorrect = true;
           }
         }
@@ -341,6 +343,7 @@ export function parseQuizText(input: string): ParseResult {
       image_url: isRevealType(type) ? image_url : null,
       reveal_config: isNewType(type) ? reveal : null,
       points_decay_start_ms: type === 'info' ? null : decay,
+      correct_indices: type === 'mc' && rightOnes.length > 1 ? rightOnes : null,
     });
   }
 

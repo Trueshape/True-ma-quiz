@@ -106,6 +106,8 @@ export type Question = {
   reveal_config: RevealConfig | null;
   /** When points start going down (ms). null = the type's usual rule, see decayStartMs. */
   points_decay_start_ms: number | null;
+  /** Multiple choice with several right answers (null: only correct_index is right). */
+  correct_indices: number[] | null;
   /** Multiple choice: show the options in a different order in each game. */
   shuffle_options: boolean;
   /** Optional picture shown with the solution. */
@@ -145,6 +147,7 @@ export type Answer = {
   question_id: string;
   question_index: number;
   chosen_index: number;
+  chosen_indices: number[] | null;
   slider_value: number | null;
   reorder_order: number[] | null;
   open_text: string | null;
@@ -181,6 +184,28 @@ export function decayStartMs(q: Pick<Question, 'type' | 'points_decay_start_ms'>
 export function computePoints(isCorrect: boolean, timeTakenMs: number, timeLimitMs: number, maxPoints: number = 1000, decayStart: number = 3000): number {
   if (!isCorrect) return 0;
   return Math.round(maxPoints * timeFactor(timeTakenMs, timeLimitMs, decayStart));
+}
+
+/**
+ * Multiple choice with several right answers: each right pick earns its share, each wrong
+ * pick takes one share away (never below 0), then the time factor. Right = exactly the
+ * right set. Mirrors submit_answer.
+ */
+export function computeMultiPoints(chosen: number[], correct: number[], maxPoints: number = 1000, timeTakenMs: number = 0, timeLimitMs: number = 30000, decayStart: number = 3000): { points: number; isCorrect: boolean } {
+  const picks = Array.from(new Set(chosen));
+  const right = picks.filter((i) => correct.includes(i)).length;
+  const wrong = picks.length - right;
+  if (correct.length === 0) return { points: 0, isCorrect: false };
+  const share = Math.max(0, right - wrong) / correct.length;
+  return {
+    points: Math.round(maxPoints * share * timeFactor(timeTakenMs, timeLimitMs, decayStart)),
+    isCorrect: right === correct.length && wrong === 0,
+  };
+}
+
+/** Whether option `i` (as shown) is a right answer, with one or several right answers. */
+export function isRightOption(q: Pick<Question, 'correct_index' | 'correct_indices'>, i: number): boolean {
+  return q.correct_indices && q.correct_indices.length > 0 ? q.correct_indices.includes(i) : i === q.correct_index;
 }
 
 // Slider scoring: proximityFraction = 1 − (|guess − answer| / range), so exact = 1.0, worst edge = 0.

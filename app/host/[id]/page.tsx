@@ -3,8 +3,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Users, Play, ArrowRight, Trophy, Check, X, RotateCcw, Share2, Info, Sliders, Type } from 'lucide-react';
-import { supabase, type Session, type Player, type Question, type Quiz } from '@/lib/supabase';
-import { getHostCode, getHostToken, hostUpdate, type HostUpdate } from '@/lib/game-api';
+import { isRightOption, supabase, type Session, type Player, type Question, type Quiz } from '@/lib/supabase';
+import { getGameStats, getHostCode, getHostToken, hostUpdate, type HostUpdate, type QuestionStats } from '@/lib/game-api';
 import { HeaderBack, HeaderEnd } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { isNewType } from '@/lib/reveal';
 import { seededOrder, shuffleOptions } from '@/lib/seeded';
 import { HostNewTypeView, NewTypeResult, SolutionImage } from '@/components/reveal-question';
+import { GameSummary, QuestionStatsLine } from '@/components/game-stats';
 
 export default function HostPage() {
   const params = useParams();
@@ -31,6 +32,7 @@ export default function HostPage() {
   const [code, setCode] = useState('');
   const [timeLeft, setTimeLeft] = useState(0);
   const [showCorrect, setShowCorrect] = useState(false);
+  const [stats, setStats] = useState<QuestionStats[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const questionStartRef = useRef<number>(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -230,6 +232,18 @@ export default function HostPage() {
     await update({ status: 'lobby', reset: true });
   };
 
+  // Statistics of the answers, read when a question ends and when the game ends.
+  useEffect(() => {
+    if (session?.status !== 'leaderboard' && session?.status !== 'finished') return;
+    let alive = true;
+    getGameStats(sessionId).then((s) => {
+      if (alive) setStats(s);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [sessionId, session?.status, session?.current_question_index]);
+
   // End the question early once every player has answered.
   const endedQuestionRef = useRef<string | null>(null);
   useEffect(() => {
@@ -360,13 +374,14 @@ export default function HostPage() {
             totalQuestions={scorableTotal}
             players={players}
             isLast={session.current_question_index === questions.length - 1}
+            stats={stats.find((s) => s.question_index === session.current_question_index)}
             onNext={nextQuestion}
             onEnd={endGame}
           />
         )}
 
         {session.status === 'finished' && (
-          <FinishedView players={players} onRestart={restart} onExit={() => router.push('/dashboard')} />
+          <FinishedView players={players} onRestart={restart} onExit={() => router.push('/dashboard')} summary={<GameSummary stats={stats} questions={questions} />} />
         )}
       </div>
     </div>
@@ -467,6 +482,7 @@ function HostQuestionView({
         <CardContent className="p-8">
           <QuestionMedia imageUrl={question.image_url} videoUrl={question.video_url} audioUrl={question.audio_url} audioVolume={question.audio_volume} audioStartMs={question.audio_start_ms} videoStartMs={question.video_start_ms} videoHidden={question.video_hidden} videoVolume={question.video_volume} audioHidden={question.audio_hidden} autoplay className="mb-4" imgClassName="max-h-64" />
           <h2 className="text-2xl md:text-3xl font-bold text-center mb-6">{question.prompt}</h2>
+          {(question.correct_indices?.length ?? 0) > 0 && <p className="text-center text-sm text-muted-foreground -mt-4 mb-4">More than one answer is right</p>}
           <div className="flex items-center gap-3">
             <div className="flex-1 h-3 rounded-full bg-card overflow-hidden border border-border">
               <div
@@ -643,9 +659,9 @@ function HostOpenView({
 }
 
 function HostLeaderboardView({
-  question, questionNumber, totalQuestions, players, isLast, onNext, onEnd,
+  question, questionNumber, totalQuestions, players, isLast, onNext, onEnd, stats,
 }: {
-  question: Question; questionNumber: number; totalQuestions: number; players: Player[]; isLast: boolean; onNext: () => void; onEnd: () => void;
+  question: Question; questionNumber: number; totalQuestions: number; players: Player[]; isLast: boolean; onNext: () => void; onEnd: () => void; stats?: QuestionStats;
 }) {
   const isSlider = question.type === 'slider';
   const isReorder = question.type === 'reorder';
@@ -696,14 +712,15 @@ function HostLeaderboardView({
               {question.options.map((opt, i) => (
                 <div key={i} className={cn(
                   'p-3 rounded-lg border text-center flex items-center justify-center gap-2',
-                  i === question.correct_index ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300' : 'border-border bg-card/40 text-muted-foreground opacity-60'
+                  isRightOption(question, i) ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300' : 'border-border bg-card/40 text-muted-foreground opacity-60'
                 )}>
-                  {i === question.correct_index ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                  {isRightOption(question, i) ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
                   <span className="font-medium">{opt}</span>
                 </div>
               ))}
             </div>
           )}
+          <QuestionStatsLine stats={stats} />
         </CardContent>
       </Card>
 
@@ -746,7 +763,7 @@ function HostLeaderboardView({
   );
 }
 
-function FinishedView({ players, onRestart, onExit }: { players: Player[]; onRestart: () => void; onExit: () => void }) {
+function FinishedView({ players, onRestart, onExit, summary }: { players: Player[]; onRestart: () => void; onExit: () => void; summary?: React.ReactNode }) {
   const sorted = [...players].sort((a, b) => b.score - a.score);
   const winner = sorted[0];
   return (
@@ -779,6 +796,8 @@ function FinishedView({ players, onRestart, onExit }: { players: Player[]; onRes
           </div>
         </CardContent>
       </Card>
+
+      {summary}
 
       <div className="flex justify-center gap-2 mt-6">
         <Button variant="outline" onClick={onExit} className="gap-2">

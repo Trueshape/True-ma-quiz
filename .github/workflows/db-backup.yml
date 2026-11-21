@@ -1,0 +1,58 @@
+# Nightly backup of the Supabase database (public, auth and storage schemas).
+# The repository is public, so the dump is encrypted with a passphrase before it is
+# stored as a workflow artifact (kept 30 days). How to set it up and restore: docs/backup.md
+name: Database backup
+
+on:
+  schedule:
+    - cron: '17 3 * * *' # every night at 03:17 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: Check the secrets
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::error::Add the SUPABASE_DB_URL and BACKUP_PASSPHRASE secrets (see docs/backup.md)."
+            exit 1
+          fi
+
+      - name: Install the PostgreSQL 17 client
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_dump --version
+
+      - name: Dump and encrypt
+        run: |
+          stamp=$(date -u +%Y-%m-%d)
+          /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" \
+            --format=custom --no-owner --no-privileges \
+            --schema=public --schema=auth --schema=storage \
+            --file=backup.dump
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
+            --symmetric --cipher-algo AES256 --output "truemaquiz-$stamp.dump.gpg" backup.dump
+          rm backup.dump
+          ls -lh ./*.gpg
+          echo "STAMP=$stamp" >> "$GITHUB_ENV"
+
+      - name: Keep the encrypted file for 30 days
+        uses: actions/upload-artifact@v4
+        with:
+          name: truemaquiz-db-${{ env.STAMP }}
+          path: truemaquiz-*.dump.gpg
+          retention-days: 30
+          if-no-files-found: error

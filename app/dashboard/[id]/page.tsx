@@ -22,6 +22,7 @@ import { MAX_BLANKS, defaultRevealConfig, isNewType, isRevealType, parseBlanks, 
 import { AcceptedAnswers, RevealSettings } from '@/components/reveal-editor';
 import { ImageUrlField, UploadButton, UPLOAD_HELP } from '@/components/image-field';
 import { HelpTip } from '@/components/help-tip';
+import { QuizStatsCard } from '@/components/game-stats';
 
 type QuestionDraft = {
   id?: string;
@@ -52,6 +53,8 @@ type QuestionDraft = {
   points_decay_start_ms: number | null;
   shuffle_options: boolean;
   solution_image_url: string;
+  /** Several right answers (multiple choice); null = only correct_index. */
+  correct_indices: number[] | null;
 };
 
 const TF_OPTIONS = ['True', 'False'];
@@ -155,6 +158,7 @@ export default function QuizEditorPage() {
         reveal_config: x.reveal_config ?? {},
         points_decay_start_ms: x.points_decay_start_ms ?? null,
         shuffle_options: x.shuffle_options ?? false,
+        correct_indices: x.correct_indices?.length ? x.correct_indices : null,
         solution_image_url: x.solution_image_url ?? '',
       }))
     );
@@ -201,6 +205,7 @@ export default function QuizEditorPage() {
       points_decay_start_ms: null,
       shuffle_options: false,
       solution_image_url: '',
+      correct_indices: null,
     };
     setQuestions((q) => [...q, newQ]);
   };
@@ -314,7 +319,7 @@ export default function QuizEditorPage() {
       type: q.type,
       prompt: q.prompt.trim(),
       options: q.type === 'tf' ? TF_OPTIONS : (q.type === 'mc' || q.type === 'reorder') ? q.options.map((o) => o.trim()) : [],
-      correct_index: q.type === 'tf' ? (q.correct_index === 1 ? 1 : 0) : q.type === 'mc' ? q.correct_index : 0,
+      correct_index: q.type === 'tf' ? (q.correct_index === 1 ? 1 : 0) : q.type === 'mc' ? (q.correct_indices?.[0] ?? q.correct_index) : 0,
       image_url: q.image_url.trim() || null,
       video_url: q.video_url.trim() || null,
       video_start_ms: q.video_start_ms || 0,
@@ -336,6 +341,7 @@ export default function QuizEditorPage() {
       reveal_config: isNewType(q.type) ? q.reveal_config : null,
       points_decay_start_ms: q.type === 'info' ? null : q.points_decay_start_ms,
       shuffle_options: q.type === 'mc' && q.shuffle_options,
+      correct_indices: q.type === 'mc' && q.correct_indices?.length ? q.correct_indices : null,
       solution_image_url: q.type === 'info' ? null : q.solution_image_url.trim() || null,
     }));
     const pendingTag = normalizeTag(tagText);
@@ -370,9 +376,10 @@ export default function QuizEditorPage() {
       <div className="fixed inset-0 bg-grid pointer-events-none" />
       <div className="fixed top-0 right-0 w-96 h-96 bg-primary/15 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Sticky header */}
-      <div className="sticky top-0 z-30 pointer-events-none">
-        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between [&>*]:pointer-events-auto">
+      {/* Sticky header: solid page colour fading slightly at the bottom, so the content
+          scrolling underneath never shows through the controls. */}
+      <div className="sticky top-0 z-30 bg-gradient-to-b from-background via-background/95 to-background/85 backdrop-blur-md border-b border-border/60 shadow-[0_8px_24px_-16px_hsl(var(--primary)/0.45)]">
+        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <HeaderBack href="/dashboard" label="Back to my quizzes" />
             <div>
@@ -467,6 +474,8 @@ export default function QuizEditorPage() {
               </CardContent>
             </Card>
 
+            {quiz && <QuizStatsCard quizId={quizId} />}
+
             <div className="space-y-4">
               {questions.map((q, idx) => (
                 <QuestionCard
@@ -559,7 +568,17 @@ function QuestionCard({
     let correct = question.correct_index;
     if (correct >= next.length) correct = next.length - 1;
     if (i < correct) correct -= 1;
-    onChange({ options: next, correct_index: correct });
+    // Several right answers: drop the removed one and shift the ones after it.
+    const many = question.correct_indices?.filter((c) => c !== i).map((c) => (c > i ? c - 1 : c)) ?? null;
+    onChange({ options: next, correct_index: correct, correct_indices: many && many.length ? many : many ? [0] : null });
+  };
+  const manyRight = isMC && question.correct_indices != null;
+  const isRight = (i: number) => (manyRight ? question.correct_indices!.includes(i) : question.correct_index === i);
+  const pickRight = (i: number) => {
+    if (!manyRight) return onChange({ correct_index: i });
+    const now = question.correct_indices!;
+    const next = now.includes(i) ? now.filter((c) => c !== i) : [...now, i].sort((a, b) => a - b);
+    if (next.length > 0) onChange({ correct_indices: next, correct_index: next[0] }); // at least one stays right
   };
 
   return (
@@ -705,18 +724,19 @@ function QuestionCard({
                 <div key={i} className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => onChange({ correct_index: i })}
+                    onClick={() => pickRight(i)}
+                    aria-pressed={isRight(i)}
                     className={cn(
                       'flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg border text-left transition-colors',
                       OPTION_COLORS[i % OPTION_COLORS.length],
-                      question.correct_index === i && 'ring-2 ring-primary'
+                      isRight(i) && 'ring-2 ring-primary'
                     )}
                   >
                     <span className={cn(
                       'w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs font-bold',
-                      question.correct_index === i ? 'bg-primary text-primary-foreground' : 'bg-background/50'
+                      isRight(i) ? 'bg-primary text-primary-foreground' : 'bg-background/50'
                     )}>
-                      {question.correct_index === i ? <Check className="w-3 h-3" /> : String.fromCharCode(65 + i)}
+                      {isRight(i) ? <Check className="w-3 h-3" /> : String.fromCharCode(65 + i)}
                     </span>
                     {isTF ? (
                       <span className="text-sm font-medium">{opt}</span>
@@ -741,6 +761,17 @@ function QuestionCard({
               <Button variant="ghost" size="sm" onClick={addOption} className="mt-2 gap-1.5 text-muted-foreground">
                 <Plus className="w-3.5 h-3.5" /> Add option
               </Button>
+            )}
+            {isMC && (
+              <label className="mt-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <Switch
+                  checked={manyRight}
+                  onCheckedChange={(v) => onChange({ correct_indices: v ? [question.correct_index] : null })}
+                  aria-label="More than one right answer"
+                />
+                More than one right answer
+                <HelpTip>Players pick every answer they think is right. Each right pick earns its share of the points; each wrong pick takes one share away.</HelpTip>
+              </label>
             )}
             {isMC && (
               <label className="mt-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">

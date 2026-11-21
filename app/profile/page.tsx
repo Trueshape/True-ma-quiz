@@ -11,6 +11,7 @@ import { HeaderBack, HeaderEnd } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { RecoverySettings } from '@/components/recovery-settings';
 import { useToast } from '@/hooks/use-toast';
 
 const ERRORS: Record<string, string> = {
@@ -22,7 +23,9 @@ const ERRORS: Record<string, string> = {
 function ProfileForm() {
   const router = useRouter();
   const { toast } = useToast();
-  const welcome = useSearchParams().get('welcome') === '1';
+  const params = useSearchParams();
+  const welcome = params.get('welcome') === '1';
+  const codeUsed = params.get('code') === 'used';
   const fileRef = useRef<HTMLInputElement>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -191,6 +194,8 @@ function ProfileForm() {
             )}
           </CardContent>
         </Card>
+
+        {!welcome && <RecoverySettings fresh={codeUsed} />}
       </div>
     </div>
   );

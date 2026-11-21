@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Check, X, Trophy, Zap, Users, Loader2, Info, ArrowRight, ArrowUp, ArrowDown, Type, GripVertical } from 'lucide-react';
-import { supabase, type Session, type Player, type Question } from '@/lib/supabase';
+import { isRightOption, supabase, type Session, type Player, type Question } from '@/lib/supabase';
 import { getPlayerLobbyCode, submitAnswer as submitAnswerRpc, type AnswerPayload } from '@/lib/game-api';
 import { HeaderEnd } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import { QuestionMedia } from '@/components/question-media';
 import { cn } from '@/lib/utils';
 import { isNewType } from '@/lib/reveal';
 import { originalOption, shuffleOptions } from '@/lib/seeded';
+import { hasManyRight, MultiChoiceAnswer } from '@/components/multi-choice';
 import { NewTypeQuestionView, NewTypeResult, SolutionImage, type NewTypeAnswer } from '@/components/reveal-question';
 
 const OPTION_COLORS = [
@@ -40,6 +41,7 @@ export default function PlayPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [chosenIndex, setChosenIndex] = useState<number | null>(null);
+  const [chosenMany, setChosenMany] = useState<number[]>([]);
   const [sliderValue, setSliderValue] = useState<number | null>(null);
   const [reorderOrder, setReorderOrder] = useState<number[]>([]);
   const [openText, setOpenText] = useState('');
@@ -150,6 +152,7 @@ export default function PlayPage() {
           const newSess = payload.new as Session;
           if (newSess.current_question_index !== session.current_question_index || newSess.status !== session.status) {
             setChosenIndex(null);
+            setChosenMany([]);
             setSliderValue(null);
             setReorderOrder([]);
             setOpenText('');
@@ -282,6 +285,18 @@ export default function PlayPage() {
     await sendAnswer({ openText: text });
   };
 
+  // Several right answers: the picks go to the server in the original option order.
+  const submitManyAnswer = async (shown: number[]) => {
+    if (!session || !player || hasAnswered) return;
+    const currentQ = questions[session.current_question_index];
+    if (!currentQ) return;
+    answeredRef.current = true;
+    setChosenMany(shown);
+    setHasAnswered(true);
+    stopTimer();
+    await sendAnswer({ chosenIndices: shown.map((i) => originalOption(currentQ, i)) });
+  };
+
   const submitNewTypeAnswer = async (a: NewTypeAnswer) => {
     if (!session || !player || hasAnswered) return;
     answeredRef.current = true;
@@ -340,6 +355,7 @@ export default function PlayPage() {
             chosenIndex={chosenIndex}
             hasAnswered={hasAnswered}
             onAnswer={submitAnswer}
+            onAnswerMany={submitManyAnswer}
           />
         )}
 
@@ -399,6 +415,7 @@ export default function PlayPage() {
             lastPoints={lastPoints}
             lastCorrect={lastCorrect}
             chosenIndex={chosenIndex}
+            chosenMany={chosenMany}
             sliderValue={sliderValue}
             reorderOrder={reorderOrder}
             openText={openText}
@@ -462,9 +479,9 @@ function PlayerInfoView({ question, questionNumber, totalQuestions }: { question
 }
 
 function PlayerQuestionView({
-  question, questionNumber, totalQuestions, timeLeft, chosenIndex, hasAnswered, onAnswer,
+  question, questionNumber, totalQuestions, timeLeft, chosenIndex, hasAnswered, onAnswer, onAnswerMany,
 }: {
-  question: Question; questionNumber: number; totalQuestions: number; timeLeft: number; chosenIndex: number | null; hasAnswered: boolean; onAnswer: (i: number) => void;
+  question: Question; questionNumber: number; totalQuestions: number; timeLeft: number; chosenIndex: number | null; hasAnswered: boolean; onAnswer: (i: number) => void; onAnswerMany: (shown: number[]) => void;
 }) {
   const pct = Math.round((timeLeft / question.time_limit_ms) * 100);
   const seconds = Math.ceil(timeLeft / 1000);
@@ -491,6 +508,9 @@ function PlayerQuestionView({
         </CardContent>
       </Card>
 
+      {hasManyRight(question) ? (
+        <MultiChoiceAnswer question={question} disabled={hasAnswered} onSubmit={onAnswerMany} />
+      ) : (
       <div className="grid grid-cols-2 gap-3">
         {question.options.map((opt, i) => {
           const isChosen = chosenIndex === i;
@@ -520,6 +540,7 @@ function PlayerQuestionView({
           );
         })}
       </div>
+      )}
 
       {hasAnswered && (
         <div className="text-center mt-6 animate-pop">
@@ -769,9 +790,9 @@ function PlayerOpenView({
 }
 
 function PlayerLeaderboardView({
-  question, questionNumber, totalQuestions, players, currentPlayerId, lastPoints, lastCorrect, chosenIndex, sliderValue, reorderOrder, openText, blankTexts, isFinished,
+  question, questionNumber, totalQuestions, players, currentPlayerId, lastPoints, lastCorrect, chosenIndex, chosenMany, sliderValue, reorderOrder, openText, blankTexts, isFinished,
 }: {
-  question: Question; questionNumber: number; totalQuestions: number; players: Player[]; currentPlayerId: string; lastPoints: number | null; lastCorrect: boolean | null; chosenIndex: number | null; sliderValue: number | null; reorderOrder: number[]; openText: string; blankTexts: string[]; isFinished: boolean;
+  question: Question; questionNumber: number; totalQuestions: number; players: Player[]; currentPlayerId: string; lastPoints: number | null; lastCorrect: boolean | null; chosenIndex: number | null; chosenMany: number[]; sliderValue: number | null; reorderOrder: number[]; openText: string; blankTexts: string[]; isFinished: boolean;
 }) {
   const myRank = players.findIndex((p) => p.id === currentPlayerId) + 1;
   const isInfo = question.type === 'info';
@@ -836,8 +857,8 @@ function PlayerLeaderboardView({
               ) : (
                 <div className="grid grid-cols-2 gap-2">
                   {question.options.map((opt, i) => {
-                    const isCorrect = i === question.correct_index;
-                    const isChosen = chosenIndex === i;
+                    const isCorrect = isRightOption(question, i);
+                    const isChosen = chosenIndex === i || chosenMany.includes(i);
                     return (
                       <div key={i} className={cn(
                         'p-3 rounded-lg border text-center flex items-center justify-center gap-2 text-sm',

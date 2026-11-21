@@ -15,7 +15,15 @@ export async function createDb(options: { upTo?: string } = {}): Promise<PGlite>
       SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$
       SELECT coalesce(NULLIF(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
-    CREATE TABLE auth.users (id uuid primary key, email text, raw_user_meta_data jsonb NOT NULL DEFAULT '{}');
+    CREATE TABLE auth.users (id uuid primary key, email text, encrypted_password text, raw_user_meta_data jsonb NOT NULL DEFAULT '{}');
+    -- pgcrypto is not available in PGlite: these stand-ins keep its contract
+    -- (crypt(password, hash) = hash when the password is right) without the real maths.
+    CREATE SCHEMA extensions;
+    CREATE FUNCTION extensions.gen_salt(kind text) RETURNS text LANGUAGE sql VOLATILE AS $$
+      SELECT '$stub$' || substr(md5(random()::text), 1, 16) $$;
+    CREATE FUNCTION extensions.crypt(pw text, salt text) RETURNS text LANGUAGE sql IMMUTABLE AS $$
+      SELECT '$stub$' || split_part(salt, '$', 3) || '$' || md5(split_part(salt, '$', 3) || pw) $$;
+    GRANT USAGE ON SCHEMA extensions TO anon, authenticated;
     CREATE SCHEMA storage;
     CREATE TABLE storage.buckets (id text primary key, name text, public boolean DEFAULT false, file_size_limit bigint, allowed_mime_types text[]);
     CREATE TABLE storage.objects (id uuid DEFAULT gen_random_uuid() primary key, bucket_id text, name text);

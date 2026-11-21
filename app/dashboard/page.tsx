@@ -198,6 +198,7 @@ export default function DashboardPage() {
       info_image_position: 'top',
       reveal_config: q.reveal_config,
       points_decay_start_ms: q.points_decay_start_ms,
+      correct_indices: q.correct_indices,
     }));
 
     const { error: saveErr } = await saveQuiz(

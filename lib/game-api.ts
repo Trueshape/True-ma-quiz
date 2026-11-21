@@ -90,6 +90,8 @@ export type AnswerPayload = {
   reorderOrder?: number[];
   openText?: string;
   blankTexts?: string[];
+  /** Multiple choice with several right answers: original indexes of every pick. */
+  chosenIndices?: number[];
 };
 
 export type AnswerResult = { points: number; is_correct: boolean; score: number };
@@ -110,6 +112,7 @@ export async function submitAnswer(
     p_reorder_order: answer.reorderOrder ?? null,
     p_open_text: answer.openText ?? null,
     p_blank_texts: answer.blankTexts ?? null,
+    p_chosen_indices: answer.chosenIndices ?? null,
   });
   if (error || !data) return { result: null, error };
   return { result: data as AnswerResult, error: null };
@@ -182,4 +185,36 @@ export async function deleteQuiz(quizId: string, token: string | null = getGuest
 export async function setQuizPublic(quizId: string, isPublic: boolean): Promise<{ error: ApiError | null }> {
   const { error } = await supabase.rpc('set_quiz_public', { p_quiz_id: quizId, p_public: isPublic });
   return { error };
+}
+
+export type QuestionStats = {
+  question_index: number;
+  question_id: string;
+  players: number;
+  answered: number;
+  correct: number;
+  /** The wrong answer chosen most often: option text, slider value or typed text. */
+  top_wrong: string | null;
+  top_wrong_count: number | null;
+};
+
+/** For the host: per question, how many answered, how many were right, the most chosen wrong answer. */
+export async function getGameStats(sessionId: string): Promise<QuestionStats[]> {
+  const token = getHostToken(sessionId);
+  if (!token) return [];
+  const { data, error } = await supabase.rpc('host_game_stats', { p_session_id: sessionId, p_host_token: token });
+  return error || !data ? [] : (data as QuestionStats[]);
+}
+
+export type QuizStats = {
+  games: number;
+  players: number;
+  average_score: number | null;
+  hardest: { question_id: string; position: number; type: string; prompt: string; answered: number; correct: number } | null;
+};
+
+/** For the author: games played, players, average final score and the hardest question. */
+export async function getQuizStats(quizId: string): Promise<QuizStats | null> {
+  const { data, error } = await supabase.rpc('quiz_stats', { p_quiz_id: quizId, p_token: getGuestQuizToken(quizId) });
+  return error || !data ? null : (data as QuizStats);
 }

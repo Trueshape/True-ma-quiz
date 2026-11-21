@@ -32,6 +32,7 @@ export function shuffleOptions(q: Question, seed: string): Question {
     ...q,
     options: order.map((i) => q.options[i]),
     correct_index: order.indexOf(q.correct_index),
+    correct_indices: q.correct_indices ? q.correct_indices.map((i) => order.indexOf(i)).sort((a, b) => a - b) : q.correct_indices,
     option_order: order,
   };
 }
