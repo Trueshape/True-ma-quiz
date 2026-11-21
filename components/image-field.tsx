@@ -5,6 +5,7 @@ import { Image as ImageIcon, Loader2, Upload } from 'lucide-react';
 import { getGuestSession } from '@/lib/supabase';
 import { QUESTION_IMAGE_ACCEPT, QUESTION_IMAGE_MAX_MB, uploadQuestionImage } from '@/lib/image-upload';
 import { Button } from '@/components/ui/button';
+import { HelpTip } from '@/components/help-tip';
 import { Input } from '@/components/ui/input';
 
 /*
@@ -45,19 +46,23 @@ export function UploadButton({ onUploaded, onError }: { onUploaded: (url: string
 
 /** A picture: URL field, Upload button, help text and a small preview. */
 export function ImageUrlField({
-  label, value, onChange, placeholder = 'https://… image URL', preview = false,
-}: { label: string; value: string; onChange: (url: string) => void; placeholder?: string; preview?: boolean }) {
+  label, value, onChange, placeholder = 'https://… image URL', preview = false, optional = false, help,
+}: { label: string; value: string; onChange: (url: string) => void; placeholder?: string; preview?: boolean; optional?: boolean; help?: string }) {
   const [error, setError] = useState<string | null>(null);
   return (
     <div>
       <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
         <ImageIcon className="w-3.5 h-3.5" /> {label}
+        {optional && <span className="text-muted-foreground/60">(optional)</span>}
+        <HelpTip>
+          {help && <p>{help}</p>}
+          <p>{getGuestSession() ? GUEST_UPLOAD_HELP : UPLOAD_HELP}</p>
+        </HelpTip>
       </label>
       <div className="flex gap-2">
         <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="flex-1" aria-label={label} />
         <UploadButton onUploaded={onChange} onError={setError} />
       </div>
-      <p className="text-xs text-muted-foreground mt-1">{getGuestSession() ? GUEST_UPLOAD_HELP : UPLOAD_HELP}</p>
       {error && <p role="alert" className="text-xs text-destructive mt-1">{error}</p>}
       {preview && value && (
         // eslint-disable-next-line @next/next/no-img-element

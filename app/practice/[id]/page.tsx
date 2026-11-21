@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight, Check, X, Trophy, Zap, Loader2, RotateCcw, Home,
 import { supabase, type Quiz, type Question, computePoints, computeSliderPoints, computeReorderPoints, computeOpenPoints, decayStartMs, getGuestSession } from '@/lib/supabase';
 import { HeaderEnd } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
+import { RangeInput } from '@/components/ui/range-input';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAudio } from '@/components/audio-provider';
@@ -559,13 +560,11 @@ function PracticeSliderView({
             <p className="text-xs text-muted-foreground">Range: {min} — {max}</p>
           </div>
 
-          <input
-            type="range"
+          <RangeInput size="lg"
             min={min}
             max={max}
             value={localValue}
             onChange={(e) => setLocalValue(parseInt(e.target.value))}
-            className="w-full h-3 rounded-full appearance-none cursor-pointer bg-card border border-border accent-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:border-0"
           />
         </CardContent>
       </Card>

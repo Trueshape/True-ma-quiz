@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { useAudio } from '@/components/audio-provider';
 import { cn } from '@/lib/utils';
+import { RangeInput } from '@/components/ui/range-input';
 import { Button } from '@/components/ui/button';
 
 export function VolumeControl() {
@@ -54,14 +55,13 @@ export function VolumeControl() {
           >
             <Icon className="w-4 h-4" />
           </button>
-          <input
-            type="range"
+          <RangeInput size="sm"
             min={0}
             max={1}
             step={0.01}
             value={level}
             onChange={(e) => setVolume(parseFloat(e.target.value))}
-            className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer bg-card border border-border accent-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:border-0"
+            className="flex-1"
             aria-label="Volume level"
           />
           <span className="w-9 text-right text-xs tabular-nums text-muted-foreground">{Math.round(level * 100)}%</span>

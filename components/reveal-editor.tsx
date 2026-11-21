@@ -9,9 +9,11 @@ import {
   revealFactor, squareGrid, type RevealConfig,
 } from '@/lib/reveal';
 import { ImageUrlField } from '@/components/image-field';
+import { HelpTip } from '@/components/help-tip';
 import { BlanksInputs, RevealImage } from '@/components/reveal-question';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { RangeInput } from '@/components/ui/range-input';
 import { cn } from '@/lib/utils';
 
 /*
@@ -37,31 +39,29 @@ type Props = { question: RevealDraft; onChange: (patch: Partial<RevealDraft>) =>
 const label = 'text-xs font-medium text-muted-foreground mb-1.5 flex items-center justify-between';
 const secs = (ms: number) => `${Math.round(ms / 100) / 10}s`;
 
-function Range({ name, value, min, max, step, shown, onChange }: { name: string; value: number; min: number; max: number; step: number; shown: string; onChange: (v: number) => void }) {
+function Range({ name, value, min, max, step, shown, onChange, help }: { name: string; value: number; min: number; max: number; step: number; shown: string; onChange: (v: number) => void; help?: string }) {
   return (
     <div>
       <label className={label}>
-        <span>{name}</span>
+        <span className="flex items-center gap-1.5">{name}{help && <HelpTip>{help}</HelpTip>}</span>
         <span className="font-bold text-foreground tabular-nums">{shown}</span>
       </label>
-      <input
-        type="range"
+      <RangeInput
         aria-label={name}
         min={min}
         max={max}
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-primary"
       />
     </div>
   );
 }
 
-function Choice<T extends string>({ name, value, options, onChange }: { name: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
+function Choice<T extends string>({ name, value, options, onChange, help }: { name: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; help?: string }) {
   return (
     <div>
-      <span className={label}>{name}</span>
+      <span className={cn(label, 'justify-start gap-1.5')}>{name}{help && <HelpTip>{help}</HelpTip>}</span>
       <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={name}>
         {options.map((o) => (
           <button
@@ -97,7 +97,10 @@ function FocusPicker({ src, x, y, onPick }: { src: string; x: number; y: number;
   return (
     <div>
       <span className={label}>
-        <span className="flex items-center gap-1.5"><Crosshair className="w-3.5 h-3.5" /> Zoom point — drag the circle</span>
+        <span className="flex items-center gap-1.5">
+          <Crosshair className="w-3.5 h-3.5" /> Zoom point
+          <HelpTip>Drag the circle, click on the picture or use the arrow keys. The picture starts zoomed in on this point and zooms out from it.</HelpTip>
+        </span>
         <span className="tabular-nums">{Math.round(x * 100)}%, {Math.round(y * 100)}%</span>
       </span>
       <div
@@ -170,7 +173,10 @@ function Preview({ question }: { question: RevealDraft }) {
   return (
     <div className="space-y-3 p-3 rounded-lg border border-border bg-card/40">
       <div className="flex flex-wrap items-center justify-between gap-x-3 text-xs text-muted-foreground">
-        <span className="font-medium">Preview — what players see</span>
+        <span className="font-medium flex items-center gap-1.5">
+          Preview
+          <HelpTip>What players see at each moment of the question. Press play, or drag the bar below.</HelpTip>
+        </span>
         <span>
           at {secs(ms)} a right answer is worth <span className="font-bold text-foreground">{Math.round(question.points_value * factor)}</span> points
         </span>
@@ -193,8 +199,7 @@ function Preview({ question }: { question: RevealDraft }) {
         >
           {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
         </Button>
-        <input
-          type="range"
+        <RangeInput
           aria-label="Preview time"
           min={0}
           max={limit}
@@ -204,7 +209,7 @@ function Preview({ question }: { question: RevealDraft }) {
             setPlaying(false);
             setMs(Number(e.target.value));
           }}
-          className="flex-1 accent-primary"
+          className="flex-1"
         />
       </div>
     </div>
@@ -216,7 +221,10 @@ export function AcceptedAnswers({ answers, onChange }: { answers: string[]; onCh
   const list = answers.length ? answers : [''];
   return (
     <div className="space-y-2">
-      <span className={label}>Accepted answers — synonyms and other languages too</span>
+      <span className={cn(label, 'justify-start gap-1.5')}>
+        Accepted answers
+        <HelpTip>Add synonyms and other languages too. Capitals, accents and small typos are ignored. Each player has one try.</HelpTip>
+      </span>
       {list.map((a, i) => (
         <div key={i} className="flex gap-2">
           <Input
@@ -235,7 +243,6 @@ export function AcceptedAnswers({ answers, onChange }: { answers: string[]; onCh
       <Button type="button" variant="outline" size="sm" className="gap-1 h-8 text-xs" onClick={() => onChange([...list, ''])}>
         <Plus className="w-3 h-3" /> Add another accepted answer
       </Button>
-      <p className="text-xs text-muted-foreground">Capitals, accents and small typos are ignored. Each player has one try.</p>
     </div>
   );
 }
@@ -274,7 +281,7 @@ function BlockySettings({ question, set }: { question: RevealDraft; set: (patch:
   return (
     <>
       <div className="grid sm:grid-cols-3 gap-4">
-        <Range name="Tiles in total" value={c.tiles} min={MIN_TILES} max={MAX_TILES} step={1} shown={String(c.tiles)}
+        <Range name="Tiles in total" help="About this many square tiles. The picture is cut around its centre so every tile is a perfect square." value={c.tiles} min={MIN_TILES} max={MAX_TILES} step={1} shown={String(c.tiles)}
           onChange={(v) => set({ tiles: v })} />
         <Range name="Tiles shown each time" value={c.tiles_per_step} min={1} max={Math.min(total, 20)} step={1} shown={String(c.tiles_per_step)}
           onChange={(v) => set({ tiles_per_step: v })} />
@@ -289,7 +296,7 @@ function BlockySettings({ question, set }: { question: RevealDraft; set: (patch:
       <div className="grid sm:grid-cols-2 gap-4">
         <Choice name="Order" value={c.order} onChange={(v) => set({ order: v })}
           options={[{ value: 'random', label: 'Random' }, { value: 'spiral', label: 'Centre outwards' }, { value: 'edges', label: 'Edges inwards' }]} />
-        <Choice name="Hidden tiles" value={c.style} onChange={(v) => set({ style: v })}
+        <Choice name="Hidden tiles" help="How the tiles look before they open: blurred or pixelated keep some colours, solid colour and cards hide everything, shuffled shows the right pieces in the wrong places." value={c.style} onChange={(v) => set({ style: v })}
           options={[
             { value: 'pixel', label: 'Pixelated' },
             { value: 'blur', label: 'Blurred' },
@@ -318,11 +325,15 @@ export function RevealSettings({ question, onChange }: Props) {
     const valid = answers.length > 0 && answers.length <= MAX_BLANKS && empty < 0;
     return (
       <div className="space-y-4">
-        <div className="p-3 rounded-lg bg-card/50 border border-border text-xs text-muted-foreground space-y-1">
-          <p>Write the sentence above and put each missing word in double braces, with other accepted answers after a |</p>
-          <p className="font-mono text-foreground">The capital of {'{{'}France{'}}'} is {'{{'}Paris|Parigi{'}}'}</p>
-        </div>
-        <p className={cn('text-xs font-medium', valid ? 'text-emerald-400' : 'text-destructive')}>
+        <span className={cn(label, 'justify-start gap-1.5 mb-0')}>
+          Blanks
+          <HelpTip>
+            <p>Write the sentence above and put each missing word in double braces, with other accepted answers after a |</p>
+            <p className="font-mono text-foreground">The capital of {'{{'}France{'}}'} is {'{{'}Paris|Parigi{'}}'}</p>
+            <p>1 to {MAX_BLANKS} blanks. Each right blank gives its share of the points.</p>
+          </HelpTip>
+        </span>
+        <p className={cn('text-xs font-medium -mt-2', valid ? 'text-emerald-400' : 'text-destructive')}>
           {answers.length === 0
             ? 'No blanks yet.'
             : answers.length > MAX_BLANKS
@@ -343,10 +354,10 @@ export function RevealSettings({ question, onChange }: Props) {
             onChange={(v) => set({ hint: v })}
           />
           <Range name="One more letter every" value={c.letter_every_ms} min={0} max={15000} step={1000}
+            help="Letters appear from the left of each blank as time passes. The last letter is never given away."
             shown={c.letter_every_ms ? secs(c.letter_every_ms) : 'Off'} onChange={(v) => set({ letter_every_ms: v })} />
         </div>
         {valid && <Preview question={question} />}
-        <p className="text-xs text-muted-foreground">Each right blank gives its share of the points. The last letter of a word is never given away.</p>
       </div>
     );
   }
@@ -355,7 +366,12 @@ export function RevealSettings({ question, onChange }: Props) {
   const d = dezoomConfig(q);
   return (
     <div className="space-y-4">
-      <ImageUrlField label="Picture to guess" value={question.image_url} onChange={(url) => onChange({ image_url: url })} />
+      <ImageUrlField
+        label="Picture to guess"
+        help={question.type === 'dezoom' ? 'Players see it zoomed in, and it zooms out while time passes.' : 'Players see it in hidden tiles that open a few at a time.'}
+        value={question.image_url}
+        onChange={(url) => onChange({ image_url: url })}
+      />
 
       {question.type === 'dezoom' ? (
         <>

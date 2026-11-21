@@ -12,6 +12,7 @@ import { MAX_TAGS, countTags, normalizeTag, type TagCount } from '@/lib/tags';
 import { HeaderBack, HeaderEnd } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { RangeInput } from '@/components/ui/range-input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +20,8 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { MAX_BLANKS, defaultRevealConfig, isNewType, isRevealType, parseBlanks, type RevealConfig } from '@/lib/reveal';
 import { AcceptedAnswers, RevealSettings } from '@/components/reveal-editor';
-import { ImageUrlField, UploadButton } from '@/components/image-field';
+import { ImageUrlField, UploadButton, UPLOAD_HELP } from '@/components/image-field';
+import { HelpTip } from '@/components/help-tip';
 
 type QuestionDraft = {
   id?: string;
@@ -600,7 +602,11 @@ function QuestionCard({
         {/* Media field */}
         {!isNew && <div>
           <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
-            <ImageIcon className="w-3.5 h-3.5" /> Media URL — image, audio (mp3/wav/ogg/flac/opus), YouTube (optional)
+            <ImageIcon className="w-3.5 h-3.5" /> Media <span className="text-muted-foreground/60">(optional)</span>
+            <HelpTip>
+              <p>A picture, a sound (mp3, wav, ogg, aac, m4a, flac, opus) or a YouTube link.</p>
+              <p>{UPLOAD_HELP}</p>
+            </HelpTip>
           </label>
           <div className="flex flex-wrap items-center gap-2">
             <Input
@@ -689,9 +695,10 @@ function QuestionCard({
 
         {(isMC || isTF) && (
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-2 block">
-              Answer options — tap to mark correct
-              {isMC && <span className="ml-2 text-muted-foreground/60">({question.options.length}/6, min 3)</span>}
+            <label className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+              Answer options
+              {isMC && <span className="text-muted-foreground/60">({question.options.length}/6)</span>}
+              <HelpTip>Tap an option to mark it as the right one.{isMC && ' Multiple choice has 3 to 6 options.'}</HelpTip>
             </label>
             <div className="space-y-2">
               {options.map((opt, i) => (
@@ -792,7 +799,13 @@ function QuestionCard({
         {isReorder && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-muted-foreground">Items to reorder ({question.options.length})</label>
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                Items to reorder ({question.options.length})
+                <HelpTip>
+                  <p>Write the items in the RIGHT order: players see them mixed up.</p>
+                  <p>Each item is either text or an image URL (jpg, png, webp, gif, avif, bmp, svg, heic), not both. 3 to 10 items.</p>
+                </HelpTip>
+              </label>
               <div className="flex gap-1">
                 <Button
                   variant="outline"
@@ -819,7 +832,6 @@ function QuestionCard({
                 </Button>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">Set the items below in the CORRECT order. Players will see them shuffled. Each item can be either text or an image URL (jpg, png, webp, gif, avif, bmp, svg, heic) — not both.</p>
             {question.options.map((opt, i) => {
               const imgUrl = question.reorder_item_images[i] ?? '';
               const ALLOWED_EXT = /\.(jpg|jpeg|webp|png|gif|avif|bmp|svg|heic|heif)(\?|$)/i;
@@ -908,7 +920,7 @@ function QuestionCard({
         )}
 
         {!isInfo && (
-          <ImageUrlField label="Picture shown with the answer (optional)" value={question.solution_image_url} onChange={(url) => onChange({ solution_image_url: url })} preview />
+          <ImageUrlField label="Picture with the answer" optional help="Shown with the solution after the question, for example the whole monument after a true / false." value={question.solution_image_url} onChange={(url) => onChange({ solution_image_url: url })} preview />
         )}
 
         {!isInfo && (
@@ -918,14 +930,13 @@ function QuestionCard({
                 <span>Time limit</span>
                 <span className="font-bold text-foreground tabular-nums">{Math.round(question.time_limit_ms / 1000)}s</span>
               </label>
-              <input
-                type="range"
+              <RangeInput
                 min={5000}
                 max={120000}
                 step={5000}
                 value={question.time_limit_ms}
                 onChange={(e) => onChange({ time_limit_ms: parseInt(e.target.value) })}
-                className="w-full h-2 rounded-full appearance-none cursor-pointer bg-card border border-border accent-primary mt-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:border-0"
+                className="mt-3"
               />
               <div className="flex justify-between text-[10px] text-muted-foreground/60 mt-1">
                 <span>5s</span>
@@ -934,8 +945,9 @@ function QuestionCard({
               </div>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Points {isSlider ? <span className="text-sky-400">(closer = more)</span> : isReorder ? <span className="text-violet-400">(% in the right place)</span> : isRevealType(question.type) ? <span className="text-pink-400">(less as the picture appears)</span> : question.type === 'blanks' ? <span className="text-pink-400">(% of right blanks)</span> : <span className="text-muted-foreground/60">(right answer)</span>}
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                Points
+                <HelpTip>{isSlider ? 'The closer the guess, the more points.' : isReorder ? 'Points for the share of items in the right place.' : isRevealType(question.type) ? 'Points for a right answer; fewer as more of the picture shows.' : question.type === 'blanks' ? 'Each right blank gives its share of the points.' : 'Points for a right answer.'}</HelpTip>
               </label>
               <Input
                 type="number"
@@ -964,20 +976,21 @@ function PointsDecayField({ question, onChange }: { question: QuestionDraft; onC
   return (
     <div className="col-span-2">
       <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center justify-between gap-3">
-        <span>Full points for the first</span>
+        <span className="flex items-center gap-1.5">
+          Full points for the first
+          <HelpTip>Answers given before this moment get full points; after it, fewer and fewer until the time runs out. Move it to the end and speed does not matter.</HelpTip>
+        </span>
         <span className="font-bold text-foreground tabular-nums text-right">
           {never ? 'whole time — speed does not matter' : `${Math.round(start / 1000)}s, ${after}`}
         </span>
       </label>
-      <input
-        type="range"
+      <RangeInput
         aria-label="Full points for the first seconds"
         min={0}
         max={limit}
         step={1000}
         value={start}
         onChange={(e) => onChange({ points_decay_start_ms: parseInt(e.target.value) })}
-        className="w-full accent-primary"
       />
     </div>
   );
