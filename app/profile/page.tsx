@@ -166,7 +166,7 @@ function ProfileForm() {
               <p className="text-sm text-muted-foreground">Loading…</p>
             ) : (
               <form onSubmit={save} className="space-y-6">
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col items-center gap-2">
                   <div
                     ref={frameRef}
                     role="button"
@@ -224,7 +224,7 @@ function ProfileForm() {
                       initial
                     )}
                   </div>
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col items-center gap-1">
                     <input ref={fileRef} type="file" accept="image/jpeg,image/png" className="hidden" onChange={pick} aria-label="Choose a picture" />
                     {(shown || avatarUrl) && (
                       <Button
