@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
+import { fireEvent } from '@testing-library/dom';
 import { cleanup, render, screen } from './helpers/render';
 
 const mocks = vi.hoisted(() => ({
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   setProfile: vi.fn(),
   uploadAvatar: vi.fn(),
   updateUser: vi.fn(),
+  cropToFile: vi.fn(),
   router: null as unknown as { push: unknown; replace: unknown },
 }));
 
@@ -38,6 +40,10 @@ vi.mock('@/lib/profile', async () => {
     uploadAvatar: mocks.uploadAvatar,
   };
 });
+vi.mock('@/lib/avatar-crop', async () => {
+  const real = await vi.importActual<typeof import('@/lib/avatar-crop')>('@/lib/avatar-crop');
+  return { ...real, cropToFile: mocks.cropToFile };
+});
 vi.mock('@/components/header-controls', () => ({ HeaderEnd: () => null, HeaderBack: () => null }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
 
@@ -49,6 +55,7 @@ beforeEach(() => {
   mocks.setProfile.mockReset().mockResolvedValue({ profile: { user_id: 'u1', nickname: 'GioMusic', avatar_url: null } });
   mocks.uploadAvatar.mockReset().mockResolvedValue({ url: 'https://x.test/avatars/u1/avatar?v=1' });
   mocks.updateUser.mockReset().mockResolvedValue({});
+  mocks.cropToFile.mockReset().mockImplementation(async (_src: string, _f: unknown, type: string) => new File(['x'], 'avatar', { type }));
   mocks.push.mockReset();
   mocks.replace.mockReset();
   URL.createObjectURL = vi.fn(() => 'blob:preview');
@@ -117,6 +124,18 @@ describe('profile page', () => {
     await vi.waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/dashboard'));
     expect(mocks.uploadAvatar).toHaveBeenCalledWith('u1', expect.any(File));
     expect(mocks.setProfile).toHaveBeenCalledWith('Gio Google', 'https://x.test/avatars/u1/avatar?v=1');
+  });
+
+  it('a new picture can be zoomed and the framed square is what gets uploaded', async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    render(<ProfilePage />);
+    await username();
+    await user.upload(screen.getByLabelText('Choose a picture'), file('image/png', 2000));
+    fireEvent.change(screen.getByLabelText('Zoom'), { target: { value: '2' } });
+    await user.click(screen.getByRole('button', { name: /save/i }));
+    await vi.waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/dashboard'));
+    expect(mocks.cropToFile).toHaveBeenCalledWith('blob:preview', { zoom: 2, x: 0, y: 0 }, 'image/png');
+    expect((mocks.uploadAvatar.mock.calls[0][1] as File).name).toBe('avatar');
   });
 
   it('removing the picture saves an empty address', async () => {
