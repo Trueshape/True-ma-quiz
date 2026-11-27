@@ -240,7 +240,7 @@ function ProfileForm() {
                         <Trash2 className="w-4 h-4" /> Remove
                       </Button>
                     )}
-                    <p className="text-xs text-muted-foreground">JPG or PNG, 1 MB at most.</p>
+                    <p className="text-xs text-muted-foreground">JPG or PNG, 1 MB max.</p>
                   </div>
                 </div>
 
