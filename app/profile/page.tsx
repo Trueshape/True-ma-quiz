@@ -2,15 +2,14 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Camera, Check, Trash2 } from 'lucide-react';
+import { Check, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
   NICKNAME_MAX, NICKNAME_MIN, checkAvatarFile, getMyProfile, nicknameAvailable, setProfile, uploadAvatar,
 } from '@/lib/profile';
-import { ZOOM_MAX, clampFraming, cropToFile, type Framing } from '@/lib/avatar-crop';
+import { clampZoom, cropToFile, type Framing } from '@/lib/avatar-crop';
 import { HeaderBack, HeaderEnd } from '@/components/header-controls';
 import { Button } from '@/components/ui/button';
-import { RangeInput } from '@/components/ui/range-input';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { RecoverySettings } from '@/components/recovery-settings';
@@ -38,23 +37,24 @@ function ProfileForm() {
   const [removeAvatar, setRemoveAvatar] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  // Framing of a newly chosen picture: drag to move it, slider or mouse wheel to zoom.
+  // The avatar circle: a click chooses a picture; a new picture is dragged to move it and
+  // zoomed with the mouse wheel.
   const frameRef = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ x: number; y: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const [natural, setNatural] = useState({ w: 1, h: 1 });
   const [framing, setFraming] = useState<Framing>({ zoom: 1, x: 0, y: 0 });
-  const reframe = (next: (f: Framing) => Framing) => setFraming((f) => clampFraming(natural.w, natural.h, next(f)));
+  const editing = !!preview && !removeAvatar;
 
   useEffect(() => {
     const frame = frameRef.current;
-    if (!frame) return;
+    if (!frame || !editing) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      setFraming((f) => clampFraming(natural.w, natural.h, { ...f, zoom: f.zoom - e.deltaY * 0.002 }));
+      setFraming((f) => ({ ...f, zoom: clampZoom(f.zoom - e.deltaY * 0.002) }));
     };
     frame.addEventListener('wheel', onWheel, { passive: false });
     return () => frame.removeEventListener('wheel', onWheel);
-  }, [preview, natural]);
+  }, [editing]);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
@@ -167,26 +167,42 @@ function ProfileForm() {
             ) : (
               <form onSubmit={save} className="space-y-6">
                 <div className="flex items-center gap-4">
-                  {preview && !removeAvatar ? (
-                    <div
-                      ref={frameRef}
-                      className="w-32 h-32 rounded-full overflow-hidden relative shrink-0 cursor-grab active:cursor-grabbing touch-none select-none ring-2 ring-primary"
-                      title="Drag to move, scroll to zoom"
-                      onPointerDown={(e) => {
-                        e.currentTarget.setPointerCapture(e.pointerId);
-                        drag.current = { x: e.clientX, y: e.clientY };
-                      }}
-                      onPointerMove={(e) => {
-                        const start = drag.current;
-                        const size = frameRef.current?.clientWidth;
-                        if (!start || !size) return;
-                        drag.current = { x: e.clientX, y: e.clientY };
-                        reframe((f) => ({ ...f, x: f.x + (e.clientX - start.x) / size, y: f.y + (e.clientY - start.y) / size }));
-                      }}
-                      onPointerUp={() => (drag.current = null)}
-                      onPointerCancel={() => (drag.current = null)}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <div
+                    ref={frameRef}
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Change picture"
+                    title={editing ? 'Click to change, drag to move, scroll to zoom' : 'Click to choose a picture'}
+                    className={`w-32 h-32 rounded-full overflow-hidden relative shrink-0 bg-primary text-primary-foreground flex items-center justify-center text-4xl font-semibold select-none touch-none ring-2 ring-primary/40 hover:ring-primary focus-visible:outline-none focus-visible:ring-primary ${editing ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
+                    onPointerDown={(e) => {
+                      e.currentTarget.setPointerCapture?.(e.pointerId);
+                      drag.current = { x: e.clientX, y: e.clientY, moved: false };
+                    }}
+                    onPointerMove={(e) => {
+                      const start = drag.current;
+                      const size = frameRef.current?.clientWidth;
+                      if (!start || !size || !editing) return;
+                      const dx = e.clientX - start.x;
+                      const dy = e.clientY - start.y;
+                      if (!start.moved && Math.hypot(dx, dy) < 4) return;
+                      drag.current = { x: e.clientX, y: e.clientY, moved: true };
+                      setFraming((f) => ({ ...f, x: f.x + dx / size, y: f.y + dy / size }));
+                    }}
+                    onPointerUp={() => {
+                      const moved = drag.current?.moved;
+                      drag.current = null;
+                      if (!moved) fileRef.current?.click();
+                    }}
+                    onPointerCancel={() => (drag.current = null)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        fileRef.current?.click();
+                      }
+                    }}
+                  >
+                    {editing ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={preview}
                         alt="Profile picture"
@@ -201,22 +217,15 @@ function ProfileForm() {
                           transform: 'translate(-50%, -50%)',
                         }}
                       />
-                    </div>
-                  ) : (
-                  <div className="w-20 h-20 rounded-full overflow-hidden bg-primary text-primary-foreground flex items-center justify-center text-3xl font-semibold shrink-0">
-                    {shown ? (
+                    ) : shown ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={shown} alt="Profile picture" className="w-full h-full object-cover" />
+                      <img src={shown} alt="Profile picture" draggable={false} className="w-full h-full object-cover pointer-events-none" />
                     ) : (
                       initial
                     )}
                   </div>
-                  )}
                   <div className="flex flex-col gap-2">
                     <input ref={fileRef} type="file" accept="image/jpeg,image/png" className="hidden" onChange={pick} aria-label="Choose a picture" />
-                    <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => fileRef.current?.click()}>
-                      <Camera className="w-4 h-4" /> Choose picture
-                    </Button>
                     {(shown || avatarUrl) && (
                       <Button
                         type="button"
@@ -234,25 +243,6 @@ function ProfileForm() {
                     <p className="text-xs text-muted-foreground">JPG or PNG, 1 MB at most.</p>
                   </div>
                 </div>
-
-                {preview && !removeAvatar && (
-                  <div className="space-y-1">
-                    <label htmlFor="avatar-zoom" className="text-sm font-medium">Zoom</label>
-                    <RangeInput
-                      id="avatar-zoom"
-                      min={1}
-                      max={ZOOM_MAX}
-                      step={0.01}
-                      value={framing.zoom}
-                      onChange={(e) => {
-                        const zoom = Number(e.target.value);
-                        reframe((f) => ({ ...f, zoom }));
-                      }}
-                      className="w-full"
-                    />
-                    <p className="text-xs text-muted-foreground">Drag the picture to move it inside the circle.</p>
-                  </div>
-                )}
 
                 <div className="space-y-2">
                   <label htmlFor="username" className="text-sm font-medium">Username</label>

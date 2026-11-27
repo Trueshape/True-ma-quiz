@@ -126,12 +126,24 @@ describe('profile page', () => {
     expect(mocks.setProfile).toHaveBeenCalledWith('Gio Google', 'https://x.test/avatars/u1/avatar?v=1');
   });
 
-  it('a new picture can be zoomed and the framed square is what gets uploaded', async () => {
+  it('clicking the avatar circle opens the file picker; there is no separate button', async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+    render(<ProfilePage />);
+    await username();
+    expect(screen.queryByRole('button', { name: /choose picture/i })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Change picture' }));
+    expect(click).toHaveBeenCalled();
+    click.mockRestore();
+  });
+
+  it('a new picture is zoomed with the mouse wheel and the framed square is what gets uploaded', async () => {
     const user = userEvent.setup({ applyAccept: false });
     render(<ProfilePage />);
     await username();
     await user.upload(screen.getByLabelText('Choose a picture'), file('image/png', 2000));
-    fireEvent.change(screen.getByLabelText('Zoom'), { target: { value: '2' } });
+    expect(screen.queryByLabelText('Zoom')).toBeNull();
+    fireEvent.wheel(screen.getByRole('button', { name: 'Change picture' }), { deltaY: -500 });
     await user.click(screen.getByRole('button', { name: /save/i }));
     await vi.waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/dashboard'));
     expect(mocks.cropToFile).toHaveBeenCalledWith('blob:preview', { zoom: 2, x: 0, y: 0 }, 'image/png');
